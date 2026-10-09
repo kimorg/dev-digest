@@ -43,6 +43,15 @@ to it are committed like any other file. · **Apply when:** changing server scri
 `adapters.ts` and `contracts/{eval-ci,knowledge,productionize,trace}.ts` differ (mostly doc
 comments, not verified for type changes). · **Apply when:** touching any contract — diff both copies first.
 
+### 2026-10-09 — reviews never use the working copy's git remote; clones are HTTPS + PAT
+**Context:** checking whether switching this repo's `origin` to SSH breaks PR analysis. ·
+**Insight:** PR data comes from Octokit (`GITHUB_TOKEN`); Repo Intel clones into its own
+`cloneDir` with the token embedded in an https URL, and refresh always rebuilds
+`https://github.com/<full_name>.git` — so an SSH URL entered in the UI only affects the first
+clone (`withGitHubToken` leaves `git@…` untouched). · **Evidence:**
+`server/src/modules/repos/service.ts:53`, `server/src/modules/repos/service.ts:121` ·
+**Apply when:** changing git remotes/SSH setup, or debugging a private-repo clone that fails only on refresh.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -60,6 +69,8 @@ _An error that keeps coming back — quote its text — and the fix._
 ## Session Notes
 
 _One dated line per session that added entries: `- YYYY-MM-DD — task: titles added`._
+
+- 2026-10-09 — SSH remote switch + demo review PR: reviews never use the working copy's git remote; clones are HTTPS + PAT
 
 ## Open Questions
 
