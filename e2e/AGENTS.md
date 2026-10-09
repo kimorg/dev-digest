@@ -43,6 +43,8 @@ npm run typecheck
 ## Do not touch
 
 - Never use the agent-browser AI `chat` command — it makes runs non-deterministic and needs a key.
+- `package-lock.json` — never hand-edit; it changes only via `npm install|uninstall` and is committed
+  with `package.json` (CI runs `npm ci`). Don't add a `pnpm-lock.yaml`.
 
 ## Read before you work
 

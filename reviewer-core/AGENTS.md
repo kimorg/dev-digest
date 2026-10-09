@@ -48,6 +48,8 @@ cd ../server && pnpm typecheck   # after any change here (server compiles this s
   from surviving findings, never taken from the model.
 - `INJECTION_GUARD` is appended to every system prompt. Untrusted content stays data. No
   keyword denylists.
+- `package-lock.json` — never hand-edit; it changes only via `npm install|uninstall` and is committed
+  with `package.json` (CI runs `npm ci`). Don't add a `pnpm-lock.yaml`.
 
 ## Read before you work
 

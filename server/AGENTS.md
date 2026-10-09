@@ -57,6 +57,8 @@ pnpm db:seed       # idempotent demo data (acme/payments-api, PR #482)
 - Don't weaken the grounding gate or `INJECTION_GUARD`; don't add keyword scanning of untrusted text.
 - Don't hand-edit `src/db/migrations/` — change the schema and run `pnpm db:generate`.
 - `clones/` — runtime checkouts, git-ignored.
+- `pnpm-lock.yaml` — never hand-edit; it changes only via `pnpm install|add|remove` and is committed
+  with `package.json` (CI runs `pnpm install --frozen-lockfile`). Don't add a `package-lock.json`.
 
 ## Read before you work
 

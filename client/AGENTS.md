@@ -42,6 +42,11 @@ pnpm typecheck
 - Component tests mock `fetch`; real browser journeys live in [../e2e](../e2e/AGENTS.md).
   If you change text or URLs a flow waits on, update the matching `e2e/specs/*.flow.json`.
 
+## Do not touch
+
+- `pnpm-lock.yaml` — never hand-edit; it changes only via `pnpm install|add|remove` and is committed
+  with `package.json` (CI runs `pnpm install --frozen-lockfile`). Don't add a `package-lock.json`.
+
 ## Read before you work
 
 - Feature spec for the task → [specs/](specs/README.md)
