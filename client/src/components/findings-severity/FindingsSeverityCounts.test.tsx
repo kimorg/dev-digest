@@ -1,0 +1,156 @@
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
+import { NextIntlClientProvider } from "next-intl";
+import type { FindingRecord, ReviewRecord } from "@devdigest/shared";
+import common from "../../../messages/en/common.json";
+
+const reviewsState: { data?: ReviewRecord[]; isLoading: boolean; isError: boolean } = {
+  isLoading: false,
+  isError: false,
+};
+const usePrReviews = vi.fn((_prId: string) => reviewsState);
+vi.mock("@/lib/hooks/reviews", () => ({ usePrReviews: (id: string) => usePrReviews(id) }));
+
+import { FindingsSeverityCounts } from "./FindingsSeverityCounts";
+import { countBySeverity } from "./helpers";
+
+afterEach(() => {
+  cleanup();
+  usePrReviews.mockClear();
+  reviewsState.data = undefined;
+});
+
+function finding(o: Partial<FindingRecord>): FindingRecord {
+  return {
+    id: "f1",
+    severity: "CRITICAL",
+    category: "security",
+    title: "Hardcoded secret",
+    file: "src/config.ts",
+    start_line: 12,
+    end_line: 12,
+    rationale: "Line 12 contains a **secret** key.",
+    suggestion: null,
+    confidence: 0.98,
+    kind: "finding",
+    trifecta_components: null,
+    evidence: null,
+    review_id: "r1",
+    accepted_at: null,
+    dismissed_at: null,
+    ...o,
+  };
+}
+
+const FINDINGS: FindingRecord[] = [
+  finding({ id: "c1", title: "Hardcoded secret" }),
+  finding({ id: "c2", title: "Lethal trifecta", dismissed_at: "2026-10-01T00:00:00Z" }),
+  finding({ id: "w1", severity: "WARNING", category: "perf", title: "N+1 query", start_line: 45, end_line: 52 }),
+];
+
+function renderCounts(ui: React.ReactElement) {
+  return render(
+    <NextIntlClientProvider locale="en" messages={{ common }}>
+      {ui}
+    </NextIntlClientProvider>,
+  );
+}
+
+describe("countBySeverity", () => {
+  it("counts every finding per severity, dismissed included", () => {
+    expect(countBySeverity(FINDINGS)).toEqual({ critical: 2, warning: 1, suggestion: 0 });
+  });
+});
+
+describe("FindingsSeverityCounts", () => {
+  it("renders one count per non-zero severity", () => {
+    renderCounts(<FindingsSeverityCounts counts={countBySeverity(FINDINGS)} findings={FINDINGS} />);
+    expect(screen.getByRole("button", { name: "2 critical findings" })).toHaveTextContent("2");
+    expect(screen.getByRole("button", { name: "1 warning finding" })).toHaveTextContent("1");
+    expect(screen.queryByRole("button", { name: /suggestion/ })).not.toBeInTheDocument();
+  });
+
+  it("renders '—' when there are no counts", () => {
+    renderCounts(<FindingsSeverityCounts counts={null} />);
+    expect(screen.getByTestId("findings-severity-none")).toHaveTextContent("—");
+    cleanup();
+    renderCounts(<FindingsSeverityCounts counts={{ critical: 0, warning: 0, suggestion: 0 }} />);
+    expect(screen.getByTestId("findings-severity-none")).toBeInTheDocument();
+  });
+
+  it("clicking a count opens a popover with only that severity; clicking again closes it", () => {
+    renderCounts(
+      <FindingsSeverityCounts
+        counts={countBySeverity(FINDINGS)}
+        findings={FINDINGS}
+        repoFullName="acme/payments-api"
+        headSha="abc123"
+      />,
+    );
+    const crit = screen.getByRole("button", { name: "2 critical findings" });
+    fireEvent.click(crit);
+    const dialog = screen.getByRole("dialog");
+    expect(crit).toHaveAttribute("aria-expanded", "true");
+    expect(within(dialog).getByText("2 critical")).toBeInTheDocument();
+    expect(within(dialog).getByText("Hardcoded secret")).toBeInTheDocument();
+    expect(within(dialog).getByText("Lethal trifecta")).toBeInTheDocument();
+    expect(within(dialog).queryByText("N+1 query")).not.toBeInTheDocument();
+    expect(within(dialog).getAllByRole("link")[0]).toHaveAttribute(
+      "href",
+      expect.stringContaining("acme/payments-api/blob/abc123/src/config.ts#L12"),
+    );
+
+    fireEvent.click(crit);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("switches severity and closes on Escape", () => {
+    renderCounts(<FindingsSeverityCounts counts={countBySeverity(FINDINGS)} findings={FINDINGS} />);
+    fireEvent.click(screen.getByRole("button", { name: "2 critical findings" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 warning finding" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("N+1 query")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Hardcoded secret")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("does not let clicks bubble to a clickable parent (PR row)", () => {
+    const onRowClick = vi.fn();
+    renderCounts(
+      <div onClick={onRowClick}>
+        <FindingsSeverityCounts counts={countBySeverity(FINDINGS)} findings={FINDINGS} />
+      </div>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "2 critical findings" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByText("Hardcoded secret"));
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it("without in-memory findings, fetches the PR's reviews only once opened", () => {
+    reviewsState.data = [
+      {
+        id: "r1",
+        pr_id: "pr1",
+        agent_id: null,
+        run_id: null,
+        kind: "review",
+        verdict: "request_changes",
+        summary: null,
+        score: 40,
+        model: null,
+        created_at: "2026-10-01T00:00:00Z",
+        findings: FINDINGS,
+      },
+    ];
+    renderCounts(<FindingsSeverityCounts counts={{ critical: 2, warning: 1, suggestion: 0 }} prId="pr1" />);
+    expect(usePrReviews).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "1 warning finding" }));
+    expect(usePrReviews).toHaveBeenCalledWith("pr1");
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("N+1 query")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Hardcoded secret")).not.toBeInTheDocument();
+  });
+});

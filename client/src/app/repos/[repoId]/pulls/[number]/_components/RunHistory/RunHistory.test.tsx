@@ -5,10 +5,11 @@
  * and shows the review score ring.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { RunSummary } from "@devdigest/shared";
+import type { RunSummary, FindingRecord } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
+import common from "../../../../../../../../messages/en/common.json";
 import { RunHistory } from "./RunHistory";
 
 afterEach(cleanup);
@@ -25,6 +26,7 @@ function run(o: Partial<RunSummary>): RunSummary {
     duration_ms: 1000,
     tokens_in: 100,
     tokens_out: 50,
+    cost_usd: null,
     findings_count: 0,
     grounding: "0/0 passed",
     ran_at: "2026-06-11T18:44:34.000Z",
@@ -36,7 +38,7 @@ function run(o: Partial<RunSummary>): RunSummary {
 
 function renderRuns(runs: RunSummary[]) {
   return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+    <NextIntlClientProvider locale="en" messages={{ prReview: messages, common }}>
       <RunHistory runs={runs} onOpenTrace={() => {}} />
     </NextIntlClientProvider>,
   );
@@ -71,5 +73,93 @@ describe("RunHistory — outcome badge", () => {
   it("a running run reads 'running'", () => {
     renderRuns([run({ status: "running", score: null, blockers: null })]);
     expect(screen.getByText("running")).toBeInTheDocument();
+  });
+});
+
+describe("RunHistory — run cost badge", () => {
+  it("a done run shows total tokens · cost next to its time", () => {
+    renderRuns([run({ status: "done", tokens_in: 8_000, tokens_out: 1_119, cost_usd: 0.0013 })]);
+    expect(screen.getByText("9,119 tok · $0.0013")).toBeInTheDocument();
+  });
+
+  it("a done run without a known cost shows '—', never $0.00", () => {
+    renderRuns([run({ status: "done", cost_usd: null })]);
+    expect(screen.getByText("150 tok · —")).toBeInTheDocument();
+    expect(screen.queryByText(/\$0\.00/)).not.toBeInTheDocument();
+  });
+
+  it("failed and running runs show no cost badge", () => {
+    renderRuns([
+      run({ run_id: "f", status: "failed", error: "boom", cost_usd: null }),
+      run({ run_id: "r", status: "running", cost_usd: null }),
+    ]);
+    expect(screen.queryByTestId("run-cost-badge")).not.toBeInTheDocument();
+  });
+});
+
+function finding(id: string, severity: FindingRecord["severity"], title: string): FindingRecord {
+  return {
+    id,
+    severity,
+    category: "security",
+    title,
+    file: "src/config.ts",
+    start_line: 12,
+    end_line: 12,
+    rationale: "r",
+    suggestion: null,
+    confidence: 0.9,
+    kind: "finding",
+    trifecta_components: null,
+    evidence: null,
+    review_id: "rv1",
+    accepted_at: null,
+    dismissed_at: null,
+  };
+}
+
+describe("RunHistory — per-severity finding counts", () => {
+  const findingsByRun = new Map([
+    [
+      "run-1",
+      [
+        finding("c1", "CRITICAL", "Hardcoded secret"),
+        finding("c2", "CRITICAL", "SSRF"),
+        finding("w1", "WARNING", "N+1 query"),
+      ],
+    ],
+    ["run-2", [finding("s1", "SUGGESTION", "Rename var")]],
+  ]);
+
+  function renderWithFindings(runs: RunSummary[]) {
+    return render(
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages, common }}>
+        <RunHistory runs={runs} onOpenTrace={() => {}} findingsByRun={findingsByRun} />
+      </NextIntlClientProvider>,
+    );
+  }
+
+  it("shows this run's counts per severity (not the other runs') + blockers", () => {
+    renderWithFindings([run({ status: "done", findings_count: 3, blockers: 2, score: 38 })]);
+    expect(screen.getByRole("button", { name: "2 critical findings" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 warning finding" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /suggestion/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/3 finding/)).not.toBeInTheDocument();
+    expect(screen.getByText(/2 blockers/)).toBeInTheDocument();
+  });
+
+  it("clicking a count opens the popover with that run's findings of that severity", () => {
+    renderWithFindings([run({ status: "done", findings_count: 3, blockers: 2, score: 38 })]);
+    fireEvent.click(screen.getByRole("button", { name: "2 critical findings" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Hardcoded secret")).toBeInTheDocument();
+    expect(within(dialog).getByText("SSRF")).toBeInTheDocument();
+    expect(within(dialog).queryByText("N+1 query")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the 'N finding(s)' text when the run's review isn't loaded", () => {
+    renderWithFindings([run({ run_id: "run-x", status: "done", findings_count: 4, blockers: 0, score: 70 })]);
+    expect(screen.getByText(/4 finding\(s\)/)).toBeInTheDocument();
+    expect(screen.queryByTestId("findings-severity")).not.toBeInTheDocument();
   });
 });

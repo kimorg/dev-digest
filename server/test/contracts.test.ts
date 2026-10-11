@@ -15,6 +15,7 @@ import {
   Settings,
   Repo,
   PrDetail,
+  PrMeta,
 } from '@devdigest/shared';
 
 /**
@@ -166,6 +167,40 @@ describe('AI contracts parse fixtures', () => {
       log: [{ t: '00.00', kind: 'info', msg: 'started' }],
     });
     expect(trace.tool_calls).toHaveLength(1);
+  });
+
+  it('PrMeta findings_counts: parsed when present, optional otherwise', () => {
+    const base = {
+      number: 482,
+      title: 't',
+      author: 'a',
+      branch: 'b',
+      base: 'main',
+      head_sha: 'abc',
+      additions: 1,
+      deletions: 0,
+      files_count: 1,
+      status: 'needs_review',
+    };
+    const counts = { critical: 2, warning: 1, suggestion: 0 };
+    expect(PrMeta.parse({ ...base, findings_counts: counts }).findings_counts).toEqual(counts);
+    expect(PrMeta.parse({ ...base, findings_counts: null }).findings_counts).toBeNull();
+    expect(PrMeta.parse(base).findings_counts).toBeUndefined();
+  });
+
+  it('RunTrace stats.cost_usd: parsed when present, optional for pre-cost traces', () => {
+    const base = {
+      config: { agent: 'Sec', model: 'gpt-4.1' },
+      prompt_assembly: { system: 's', user: 'u' },
+      tool_calls: [],
+      raw_output: '',
+      memory_pulled: [],
+      specs_read: [],
+      log: [],
+    };
+    const stats = { duration_ms: 1, tokens_in: 1, tokens_out: 1, findings: 0, grounding: '0/0 passed' };
+    expect(RunTrace.parse({ ...base, stats: { ...stats, cost_usd: 0.0013 } }).stats.cost_usd).toBe(0.0013);
+    expect(RunTrace.parse({ ...base, stats }).stats.cost_usd).toBeUndefined();
   });
 });
 

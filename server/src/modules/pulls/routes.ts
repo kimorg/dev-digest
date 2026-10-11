@@ -1,7 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, desc, eq, inArray } from 'drizzle-orm';
-import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import type {
+  PrMeta,
+  PrDetail,
+  GitHubClient,
+  PrReviewComment,
+  FindingsCounts,
+} from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
@@ -113,8 +119,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
 
     // Latest-review SCORE per PR for the list's score ring. Computed on read
     // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
-    // not surfaced on the list — findings live on the PR detail page.)
+    // grouping is cheap.
     const prIds = rows.map((r) => r.id);
     const latestReviewByPr = new Map<string, { score: number | null }>();
     if (prIds.length > 0) {
@@ -126,6 +131,51 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       // Rows are newest-first → first seen per PR is the latest review.
       for (const rv of reviewRows) {
         if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { score: rv.score });
+      }
+    }
+
+    // COST column: total USD of ALL agent runs per PR. SUM skips NULL (failed /
+    // unpriced runs), and is NULL only when no run of the PR has a cost.
+    const costByPr = new Map<string, number | null>();
+    if (prIds.length > 0) {
+      const costRows = await container.db
+        .select({
+          prId: t.agentRuns.prId,
+          cost: sql<string | number | null>`sum(${t.agentRuns.costUsd})`,
+        })
+        .from(t.agentRuns)
+        .where(inArray(t.agentRuns.prId, prIds))
+        .groupBy(t.agentRuns.prId);
+      for (const c of costRows) {
+        if (c.prId) costByPr.set(c.prId, c.cost == null ? null : Number(c.cost));
+      }
+    }
+
+    // FINDINGS column: per-severity counts summed over ALL of the PR's reviews
+    // (dismissed findings included). PRs with a review but no findings get
+    // zeros; PRs never reviewed stay null.
+    const countsByPr = new Map<string, FindingsCounts>();
+    if (prIds.length > 0) {
+      for (const prId of latestReviewByPr.keys()) {
+        countsByPr.set(prId, { critical: 0, warning: 0, suggestion: 0 });
+      }
+      const countRows = await container.db
+        .select({
+          prId: t.reviews.prId,
+          severity: t.findings.severity,
+          n: sql<number>`count(*)::int`,
+        })
+        .from(t.findings)
+        .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
+        .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
+        .groupBy(t.reviews.prId, t.findings.severity);
+      for (const c of countRows) {
+        const counts = countsByPr.get(c.prId) ?? { critical: 0, warning: 0, suggestion: 0 };
+        const key = c.severity.toLowerCase();
+        if (key === 'critical' || key === 'warning' || key === 'suggestion') {
+          counts[key] += Number(c.n);
+        }
+        countsByPr.set(c.prId, counts);
       }
     }
 
@@ -153,6 +203,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        cost_usd: costByPr.get(r.id) ?? null,
+        findings_counts: countsByPr.get(r.id) ?? null,
       };
     });
   });

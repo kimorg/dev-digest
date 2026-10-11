@@ -52,6 +52,16 @@ clone (`withGitHubToken` leaves `git@…` untouched). · **Evidence:**
 `server/src/modules/repos/service.ts:53`, `server/src/modules/repos/service.ts:121` ·
 **Apply when:** changing git remotes/SSH setup, or debugging a private-repo clone that fails only on refresh.
 
+### 2026-10-09 — persisted run traces are never re-parsed, so new `RunTrace` fields must be optional
+**Context:** re-adding `cost_usd` to `RunStats` for the Run Cost Badge. · **Insight:**
+`getRunTrace` returns the `run_traces.trace` JSONB cast `as RunTrace` (no Zod parse), so traces
+written before a field existed reach the client without the key. Declare new trace fields
+`.nullish()` (not `.nullable()`), and the UI must treat `undefined` as "no data". Run cost itself
+is already computed by reviewer-core (`ReviewOutcome.costUsd`: OpenRouter `usage.cost`, else
+`PriceBook`). The server only persists it, so no extra model call is needed. · **Evidence:**
+`server/src/modules/reviews/repository/run.repo.ts:183`, `reviewer-core/src/review/run.ts:184` ·
+**Apply when:** adding any field to `RunTrace`/`RunStats`, or surfacing run tokens/cost.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -62,6 +72,13 @@ _Quirks of dependencies, tools, CLIs and the environment._
 ("Expected object, received null"); use `Schema.nullish().transform((b) => b ?? {})`. ·
 **Apply when:** giving an "empty body is OK" route a `schema.body`.
 
+### 2026-10-09 — `pnpm db:migrate` prints a Postgres NOTICE that looks like an error
+**Context:** applying migration `0010` (agent_runs.cost_usd). · **Insight:** `runMigrations`
+runs `CREATE EXTENSION IF NOT EXISTS vector` first. postgres.js logs the resulting NOTICE as an
+object dump ending in `routine: 'transformCreateStmt'`. It is harmless: success is the
+`✓ migrations applied` line after it. · **Evidence:** `server/src/db/migrate.ts:23` ·
+**Apply when:** `db:migrate` output looks like a stack/error object — check for the ✓ line before debugging.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -71,6 +88,7 @@ _An error that keeps coming back — quote its text — and the fix._
 _One dated line per session that added entries: `- YYYY-MM-DD — task: titles added`._
 
 - 2026-10-09 — SSH remote switch + demo review PR: reviews never use the working copy's git remote; clones are HTTPS + PAT
+- 2026-10-09 — Run Cost Badge: persisted run traces are never re-parsed, so new `RunTrace` fields must be optional, `pnpm db:migrate` prints a Postgres NOTICE that looks like an error
 
 ## Open Questions
 

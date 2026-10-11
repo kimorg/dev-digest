@@ -170,8 +170,20 @@ export const PrMeta = z.object({
   updated_at: z.string().nullish(),
   // Latest-review score (list endpoint only; null/absent until reviewed).
   score: z.number().int().nullish(),
+  // Sum of all agent-run costs in USD (list endpoint only); null when no run has a cost.
+  cost_usd: z.number().nullish(),
+  // Findings per severity summed over all of the PR's reviews (list endpoint
+  // only); null/absent until the PR has a review.
+  findings_counts: z
+    .object({
+      critical: z.number().int(),
+      warning: z.number().int(),
+      suggestion: z.number().int(),
+    })
+    .nullish(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
+export type FindingsCounts = NonNullable<PrMeta['findings_counts']>;
 
 export const PrFile = z.object({
   path: z.string(),
