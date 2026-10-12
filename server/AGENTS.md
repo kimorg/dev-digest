@@ -41,6 +41,37 @@ pnpm db:seed       # idempotent demo data (acme/payments-api, PR #482)
 - Any test that touches Postgres **must** be named `*.it.test.ts` (keeps the unit lane hermetic).
 - Throw `AppError` or its subclasses (`src/platform/errors.ts`) — the shared handler builds the error envelope.
 
+## Naming
+
+Where the code is inconsistent, follow the rule for new code and leave legacy names as they are.
+
+- **Files:** kebab-case (`run-executor.ts`). Module roles are fixed: `routes.ts` · `service.ts` ·
+  `repository.ts` · `constants.ts` · `helpers.ts` · `types.ts`; a big repository splits into
+  `repository/<aggregate>.repo.ts`. A `_` prefix (`modules/_shared/`) = shared internals, not a module.
+- **Classes:** `<Domain>Service` / `<Domain>Repository`, domain **singular** (`RepoService`,
+  `ReviewRepository`). Legacy: `AgentsService`, `AgentsRepository`.
+- **Repository functions:** verb first — `get<X>` (one row, `| undefined`), `list<X>For<Parent>`,
+  `insert|upsert|delete|set<X>`, `create|complete<X>` (`listRunsForPull`, `setFindingDismissed`).
+  Legacy: `reviewsForPull`, `findingContext`.
+- **DB:** export = camelCase plural of the SQL snake_case plural (`pullRequests` ↔ `pull_requests`);
+  columns `workspaceId: uuid('workspace_id')`, FKs `<entity>Id`, timestamps `<event>At`. Indexes
+  `<table>_<cols>_idx`, unique `_uq` (`repos_ws_fullname_uq`, `ws` = workspace). Row types
+  `<Entity>Row` in `src/db/rows.ts` (`$inferSelect`).
+- **Migrations:** name them — `pnpm db:generate --name add_x` → `NNNN_add_x.sql` (like
+  `0001_add_agent_run_error`), not drizzle's random `0005_gray_peter_parker`.
+- **Zod contracts:** PascalCase; schema and type **share one name**, no `Schema` suffix
+  (`const Repo = z.object(…)` + `type Repo = z.infer<typeof Repo>`). Suffixes: `<X>Input` /
+  `<X>Request` in, `<X>Result` out, `<X>Params` for route params (`IdParams`).
+- **Adapters:** port interface is a plain noun, no `I` prefix (`LLMProvider`, `GitHubClient`);
+  implementation in `adapters/<port>/<vendor>.ts` (`llm/openai.ts`), `index.ts` if there is only one.
+- **Constants & errors:** SCREAMING_SNAKE in `constants.ts` (`MAX_*`, `DEFAULT_*`); job kinds
+  `<X>_JOB_KIND = 'kebab-case'` (`'repo-intel-index'`). Errors `<Kind>Error extends AppError` with a
+  snake_case `code` (`not_found`, `github_comment_failed`).
+- **Routes:** plural resources, kebab-case segments, `:id`; actions are a POST verb sub-path
+  (`/runs/:id/cancel`, `/settings/secrets-status`).
+- **Imports:** relative imports end in `.js` — except `src/db/schema*`, which stays extensionless
+  (drizzle-kit loads it through its own CJS loader).
+
 ## Gotchas
 
 - The schema already holds tables for future lessons (eval, memory, skills, ci…). They are

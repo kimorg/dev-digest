@@ -33,6 +33,14 @@ npm run typecheck
 - `{BASE}` in a command is replaced with `E2E_BASE_URL`.
 - Flows read seeded data only (`acme/payments-api`, PR #482, built-in agents) — never trigger a review/model call.
 
+## Naming
+
+- Flow file `specs/NN-kebab-name.flow.json`: two-digit `NN` is the run order; a new flow takes the
+  next free number.
+- `name` — a sentence stating the user-visible outcome; `description` — which route/API it exercises;
+  step `label` — a short lowercase phrase saying what is checked (`"agents route reached"`).
+- Placeholders are UPPERCASE in braces (`{BASE}`); `lib/` helpers are camelCase verbs (`resolveArgs`).
+
 ## Gotchas
 
 - Needs a **freshly seeded** DB: flow `02` follows the home redirect to the *first* repo and

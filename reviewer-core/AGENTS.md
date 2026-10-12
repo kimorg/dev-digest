@@ -35,6 +35,17 @@ cd ../server && pnpm typecheck   # after any change here (server compiles this s
 - Any new untrusted prompt input (PR text, code, specs, repo-derived context) goes through
   `wrapUntrusted()` — never concatenate it raw into the prompt.
 
+## Naming
+
+- Files kebab-case, grouped by pipeline stage (`llm/`, `review/`, `output/`).
+- Functions camelCase, verb first (`assemblePrompt`, `groundFindings`, `reduceReviews`); converters
+  `to<X>` (`toReviewPayload`, `toJsonSchema`), builders `build<X>` (`buildLineIndex`).
+- Types: `<X>Input` → `<X>Outcome` / `<X>Result`, plus `<X>Options`, `<X>Parts` (`ReviewInput`,
+  `ReviewOutcome`, `PromptParts`). Providers `<Vendor>Provider implements LLMProvider` +
+  `<Vendor>ProviderOptions`.
+- Constants SCREAMING_SNAKE; tunables `DEFAULT_*` (`DEFAULT_MAP_THRESHOLD_LINES`).
+- Relative imports end in `.js`; tests are `test/<source-basename>.test.ts` (`to-review.test.ts`).
+
 ## Gotchas
 
 - The server consumes this package's TypeScript source via a path alias (tsx in dev,

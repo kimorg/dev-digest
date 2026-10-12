@@ -35,6 +35,25 @@ pnpm typecheck
 - Reuse primitives from `@devdigest/ui` before writing new ones.
 - API base URL comes from `NEXT_PUBLIC_API_BASE` (default `http://localhost:3001`).
 
+## Naming
+
+- **Feature component:** `_components/<Name>/` → `<Name>.tsx`, `index.ts`
+  (`export { X, X as default } from "./X"`), optional `constants.ts` · `helpers.ts` · `styles.ts` ·
+  `<Name>.test.tsx`. Shared ones: `src/components/<kebab-folder>/<Name>.tsx` (`run-cost-badge/RunCostBadge.tsx`).
+- **Components:** named function export matching the file; props `interface <Name>Props`; callback
+  props `on<Event>` (`onOpenTrace`); booleans `is|has|can*`.
+- **`styles.ts`:** one exported object `s`, camelCase keys, dynamic styles as functions (`s.card(focused, …)`).
+- **Hooks:** `use<Entity>` (detail), `use<Entities>` (list), `use<Verb><Entity>` (mutation:
+  `useCreateAgent`, `useDeleteRun`), `usePr<X>` for PR-scoped data. Files `src/lib/hooks/<domain>.ts`;
+  component-local hooks in `hooks/use<X>.ts`.
+- **Query keys:** `["<kebab-resource>", id?]` — singular for detail, plural for list (`["agent", id]` /
+  `["agents"]`, `["pr-runs", prId]`); invalidate with the same keys.
+- **i18n:** `messages/en/<camelNamespace>.json` (`prReview`), nested camelCase keys
+  (`finding.suggestedFix`), `const t = useTranslations("<ns>")`.
+- **Misc:** `src/lib/*` kebab-case (`.tsx` only with JSX); constants SCREAMING_SNAKE; `data-testid`
+  kebab-case `<component>[-<state>]` (`findings-severity-none`); test suites
+  `describe("<Name> (smoke)")` / `describe("<Name> — <aspect>")`.
+
 ## Gotchas
 
 - `src/vendor/shared` is a copy of `server/src/vendor/shared` and has drifted — when a
