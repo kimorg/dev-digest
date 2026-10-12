@@ -37,6 +37,18 @@ on the trigger wrapper covers both the trigger and the portalled popover. ·
 `client/src/components/findings-severity/FindingsPopover.tsx:238` ·
 **Apply when:** putting any popover/menu inside a clickable row or a clipped container (reuse `FindingsPopover`'s placement code).
 
+### 2026-10-12 — hover popovers: check them in Chrome with CDP `Input.dispatchMouseEvent`, walking across the gap
+**Context:** switching the PR-list FINDINGS popover to hover. · **Insight:** the portalled popover
+sits 6 px below its trigger. Moving the pointer into it fires `mouseleave` on the cell, so the close
+has to be delayed and cancelled by the popover's own `onMouseEnter`. vitest `fireEvent` can't show
+that the real pointer path works. In headless Chrome (see the CDP note under Tool & Library Notes),
+send `Input.dispatchMouseEvent {type: "mouseMoved"}` to the cell centre, wait more than the open
+delay, then step the pointer into the popover's rect in ~6 moves, and check that `[role=dialog]`
+is still there. ·
+**Evidence:** `client/src/components/findings-severity/FindingsSeverityCounts.tsx:101`,
+`client/src/components/findings-severity/FindingsSeverityCounts.tsx:183` ·
+**Apply when:** building or changing any hover-triggered popover, tooltip or menu.
+
 ## What Doesn't Work
 
 _Dead ends and anti-patterns — what was tried and why it failed. The most skipped section, and the most valuable._
@@ -98,6 +110,8 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-09 — Run Cost Badge: a shared component's i18n namespace must be added to every parent's test provider, persisted run traces are never re-parsed (pointer)
 
 - 2026-10-11 — Findings by severity (counts, popover, pills): popovers over the PR table / run accordions: portal to body + stop bubbling at the wrapper, headless `google-chrome` + a CDP script works for visual checks; PR list needs `?status=all`, "Updating a style property during rerender … borderColor borderLeftColor"
+
+- 2026-10-12 — PR-list FINDINGS hover popover + latest review: hover popovers: check them in Chrome with CDP `Input.dispatchMouseEvent`, walking across the gap
 
 ## Open Questions
 

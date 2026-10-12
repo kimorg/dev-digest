@@ -29,6 +29,7 @@
     },
     "countAria": "{count, plural, one {# {severity} finding} other {# {severity} findings}}",
     "popoverTitle": "{count} {severity}",
+    "popoverTitleAll": "{count, plural, one {# finding} other {# findings}} · latest review",
     "empty": "No findings",
     "error": "Couldn't load findings"
   }

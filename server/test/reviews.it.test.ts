@@ -218,7 +218,7 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     await app.close();
   });
 
-  it('PR list COST = sum of all agent runs (NULL costs skipped; null when none) + FINDINGS counts', async () => {
+  it('PR list COST = sum of all agent runs (NULL costs skipped; null when none) + FINDINGS of the latest review', async () => {
     const app = await appWith(REVIEW_FIXTURE);
     const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
     const [unreviewed] = await pg.handle.db
@@ -243,13 +243,14 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
       { workspaceId, prId: pr.id, status: 'done', costUsd: 0.0005 },
       { workspaceId, prId: pr.id, status: 'failed', costUsd: null },
     ]);
-    // Two reviews of the same PR → FINDINGS counts are summed across both,
-    // dismissed findings included.
+    // Two reviews of the same PR → FINDINGS counts only the newer one (rvB),
+    // dismissed findings included. Explicit createdAt: a multi-row insert would
+    // give both rows the same now().
     const [rvA, rvB] = await pg.handle.db
       .insert(t.reviews)
       .values([
-        { workspaceId, prId: pr.id, kind: 'review', score: 40 },
-        { workspaceId, prId: pr.id, kind: 'review', score: 70 },
+        { workspaceId, prId: pr.id, kind: 'review', score: 40, createdAt: new Date('2026-10-01T10:00:00Z') },
+        { workspaceId, prId: pr.id, kind: 'review', score: 70, createdAt: new Date('2026-10-02T10:00:00Z') },
       ])
       .returning();
     const finding = (reviewId: string, severity: string, dismissed = false) => ({
@@ -281,8 +282,8 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(list.find((p) => p.id === pr.id)!.cost_usd).toBeCloseTo(0.0025);
     expect(list.find((p) => p.id === unreviewed!.id)!.cost_usd).toBeNull();
     expect(list.find((p) => p.id === pr.id)!.findings_counts).toEqual({
-      critical: 2,
-      warning: 1,
+      critical: 1,
+      warning: 0,
       suggestion: 1,
     });
     expect(list.find((p) => p.id === unreviewed!.id)!.findings_counts).toBeNull();

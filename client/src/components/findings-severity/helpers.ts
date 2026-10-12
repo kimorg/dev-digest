@@ -17,6 +17,15 @@ export function countBySeverity(findings: Pick<FindingRecord, "severity">[]): Fi
   return counts;
 }
 
+/** Findings ordered CRITICAL → WARNING → SUGGESTION (stable within a severity). */
+export function sortBySeverity<T extends Pick<FindingRecord, "severity">>(findings: T[]): T[] {
+  const rank = (f: T) => {
+    const i = SEVERITY_KEYS.findIndex((k) => k.severity === f.severity);
+    return i === -1 ? SEVERITY_KEYS.length : i;
+  };
+  return [...findings].sort((x, y) => rank(x) - rank(y));
+}
+
 /** Format a finding's line range ("11" when single-line, else "11-15"). */
 export function lineLabel(f: Pick<FindingRecord, "start_line" | "end_line">): string {
   return f.start_line === f.end_line ? `${f.start_line}` : `${f.start_line}-${f.end_line}`;

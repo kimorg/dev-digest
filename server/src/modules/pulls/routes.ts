@@ -121,16 +121,16 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     // from reviews (no FK denorm); the list is small, so one IN-query + JS
     // grouping is cheap.
     const prIds = rows.map((r) => r.id);
-    const latestReviewByPr = new Map<string, { score: number | null }>();
+    const latestReviewByPr = new Map<string, { id: string; score: number | null }>();
     if (prIds.length > 0) {
       const reviewRows = await container.db
-        .select({ prId: t.reviews.prId, score: t.reviews.score })
+        .select({ id: t.reviews.id, prId: t.reviews.prId, score: t.reviews.score })
         .from(t.reviews)
         .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
         .orderBy(desc(t.reviews.createdAt));
       // Rows are newest-first → first seen per PR is the latest review.
       for (const rv of reviewRows) {
-        if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { score: rv.score });
+        if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { id: rv.id, score: rv.score });
       }
     }
 
@@ -151,31 +151,31 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // FINDINGS column: per-severity counts summed over ALL of the PR's reviews
-    // (dismissed findings included). PRs with a review but no findings get
-    // zeros; PRs never reviewed stay null.
+    // FINDINGS column: per-severity counts of each PR's LATEST review only (the
+    // same review as SCORE; dismissed findings included). A latest review with
+    // no findings gives zeros; PRs never reviewed stay null.
     const countsByPr = new Map<string, FindingsCounts>();
-    if (prIds.length > 0) {
-      for (const prId of latestReviewByPr.keys()) {
+    if (latestReviewByPr.size > 0) {
+      const prByReview = new Map<string, string>();
+      for (const [prId, review] of latestReviewByPr) {
+        prByReview.set(review.id, prId);
         countsByPr.set(prId, { critical: 0, warning: 0, suggestion: 0 });
       }
       const countRows = await container.db
         .select({
-          prId: t.reviews.prId,
+          reviewId: t.findings.reviewId,
           severity: t.findings.severity,
           n: sql<number>`count(*)::int`,
         })
         .from(t.findings)
-        .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
-        .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
-        .groupBy(t.reviews.prId, t.findings.severity);
+        .where(inArray(t.findings.reviewId, [...prByReview.keys()]))
+        .groupBy(t.findings.reviewId, t.findings.severity);
       for (const c of countRows) {
-        const counts = countsByPr.get(c.prId) ?? { critical: 0, warning: 0, suggestion: 0 };
+        const counts = countsByPr.get(prByReview.get(c.reviewId)!)!;
         const key = c.severity.toLowerCase();
         if (key === 'critical' || key === 'warning' || key === 'suggestion') {
           counts[key] += Number(c.n);
         }
-        countsByPr.set(c.prId, counts);
       }
     }
 

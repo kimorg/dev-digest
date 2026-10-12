@@ -12,14 +12,18 @@ popover, and filter a review run's findings by severity.
 ## UI & routes
 `FindingsSeverityCounts` + `FindingsPopover` (`src/components/findings-severity/`):
 one clickable `icon count` per severity with count > 0 (dotted underline in the severity
-colour); `—` when there are none. Click → popover with **only that severity's** findings
+colour); `—` when there are none. Click trigger (default): click → popover with **only that severity's** findings
 (severity badge, title, category, `file:line` → GitHub blob at head sha, confidence,
 2-line rationale). Same icon again / another icon / `Esc` / outside click / scroll closes or
 switches. Portalled to `<body>` (`position: fixed`) because the table and accordions clip
 overflow; flips above the trigger near the viewport bottom. Clicks never bubble to the row.
-- **PR list** (`/repos/:repoId/pulls`) — FINDINGS column between Score and Status; counts are
-  summed over all of the PR's reviews (dismissed included). The popover fetches the PR's
-  reviews on open (loading skeleton / error line).
+- **PR list** (`/repos/:repoId/pulls`) — FINDINGS column between Score and Status; counts come
+  from the PR's **latest** review (dismissed included). Here the trigger is **hover**
+  (`trigger="hover"`): the counts are plain text, and hovering or focusing the cell opens, after
+  a short delay, one popover with **all** of the latest review's findings ordered by severity
+  ("N findings · latest review"). The popover stays open while the pointer moves into it and closes
+  shortly after it leaves (or on Esc / scroll). It fetches the PR's reviews on open (loading
+  skeleton / error line).
 - **Agent runs → Timeline** (`RunHistory`) — counts for that run only, replacing the
   "N finding(s)" text (kept as fallback when the run's review isn't loaded or has 0 findings);
   `· N blockers` stays. Popover uses the already-loaded findings (no request).
@@ -33,9 +37,15 @@ overflow; flips above the trigger near the viewport bottom. Clicks never bubble 
 
 ## Acceptance criteria
 - Counts per severity match the findings (dismissed included); zero severities are hidden.
-- The popover lists only the clicked severity; clicking a count in a PR row doesn't open the PR.
+- PR list: counts and popover use the latest review only; hovering the cell lists all its findings,
+  CRITICAL first; clicks inside the cell or popover don't open the PR.
+- Timeline: the popover lists only the clicked severity.
 - Pills filter to one severity and toggle off.
 - Tests: `FindingsSeverityCounts.test.tsx`, `RunHistory.test.tsx`, `FindingsPanel.test.tsx`.
 
 ## Open questions
 - None.
+
+## Revisions
+- 2026-10-12 — PR list: latest review only; hover on the FINDINGS cell opens one all-severity
+  popover (was click per severity). Timeline unchanged.

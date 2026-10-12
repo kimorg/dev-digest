@@ -70,6 +70,7 @@ export function PRRow({
           prId={pr.id}
           repoFullName={repoFullName}
           headSha={pr.head_sha}
+          trigger="hover"
         />
       </div>
       <div>

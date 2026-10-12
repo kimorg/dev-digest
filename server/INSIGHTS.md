@@ -29,6 +29,16 @@ _Approaches and solutions that worked and are worth repeating._
 
 _Dead ends and anti-patterns — what was tried and why it failed. The most skipped section, and the most valuable._
 
+### 2026-10-12 — "latest review" tests: rows from one multi-row insert share `created_at`
+**Context:** making PR-list FINDINGS count only the latest review. · **Insight:** "latest review"
+means `ORDER BY reviews.created_at DESC` with no tie-breaker: both the list's SCORE/FINDINGS and
+`reviewsForPull` (the popover's source) work this way. `created_at` defaults to `now()`, which is
+fixed for the whole transaction, so `insert(t.reviews).values([a, b])` gives both rows the same
+timestamp, and which one is "latest" is undefined. Set `createdAt` explicitly in such fixtures. ·
+**Evidence:** `server/test/reviews.it.test.ts:247`, `server/src/modules/pulls/routes.ts:130`,
+`server/src/modules/reviews/repository/review.repo.ts:66` · **Apply when:** writing a test or
+seed that relies on review/run ordering.
+
 ## Codebase Patterns
 
 _Conventions and architectural decisions (with the reason) that the code doesn't explain._
@@ -89,6 +99,8 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 
 - 2026-10-09 — SSH remote switch + demo review PR: reviews never use the working copy's git remote; clones are HTTPS + PAT
 - 2026-10-09 — Run Cost Badge: persisted run traces are never re-parsed, so new `RunTrace` fields must be optional, `pnpm db:migrate` prints a Postgres NOTICE that looks like an error
+
+- 2026-10-12 — PR-list FINDINGS latest review only: "latest review" tests: rows from one multi-row insert share `created_at`
 
 ## Open Questions
 
