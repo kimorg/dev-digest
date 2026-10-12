@@ -41,6 +41,16 @@ export function FindingsTab({
   onDelete,
   onRunDone,
 }: FindingsTabProps) {
+  // review.run_id → its agent_runs row, so each VerdictBanner can show that run's cost.
+  const runById = React.useMemo(
+    () => new Map((prRuns ?? []).map((r) => [r.run_id, r])),
+    [prRuns],
+  );
+  // review.run_id → that run's findings, for the timeline's per-severity counts.
+  const findingsByRun = React.useMemo(
+    () => new Map(runs.flatMap((rv) => (rv.run_id ? [[rv.run_id, rv.findings] as const] : []))),
+    [runs],
+  );
   const handleCancelAll = useCallback(() => {
     liveRunIds.forEach((id) => cancelMutation.mutate(id));
   }, [liveRunIds, cancelMutation]);
@@ -134,6 +144,9 @@ export function FindingsTab({
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
             onDelete={handleDelete}
+            findingsByRun={findingsByRun}
+            repoFullName={repoFullName}
+            headSha={headSha}
           />
         </div>
       )}
@@ -164,6 +177,7 @@ export function FindingsTab({
             headSha={headSha}
             targetRunId={target?.runId ?? null}
             targetNonce={target?.n ?? 0}
+            run={review.run_id ? runById.get(review.run_id) : undefined}
           />
         ))
       )}

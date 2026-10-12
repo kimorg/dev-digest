@@ -208,6 +208,85 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(run!.status).toBe('done');
     expect(run!.findingsCount).toBe(1);
     expect(run!.grounding).toBe('1/2 passed');
+    // Run Cost Badge: the engine's costUsd (mock: $0.001 per call, one call
+    // single-pass) is persisted on the run, the timeline row and the trace.
+    expect(run!.costUsd).toBeCloseTo(0.001);
+    expect(trace.stats.cost_usd).toBeCloseTo(0.001);
+    const runs = (await app.inject({ method: 'GET', url: `/pulls/${pr.id}/runs` })).json();
+    expect(runs[0].cost_usd).toBeCloseTo(0.001);
+
+    await app.close();
+  });
+
+  it('PR list COST = sum of all agent runs (NULL costs skipped; null when none) + FINDINGS of the latest review', async () => {
+    const app = await appWith(REVIEW_FIXTURE);
+    const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+    const [unreviewed] = await pg.handle.db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId: repo.id,
+        number: 483,
+        title: 'No runs yet',
+        author: 'deepak.r',
+        branch: 'feat/none',
+        base: 'main',
+        headSha: 'e5f6a7b8',
+        additions: 1,
+        deletions: 0,
+        filesCount: 1,
+        status: 'open',
+      })
+      .returning();
+    await pg.handle.db.insert(t.agentRuns).values([
+      { workspaceId, prId: pr.id, status: 'done', costUsd: 0.002 },
+      { workspaceId, prId: pr.id, status: 'done', costUsd: 0.0005 },
+      { workspaceId, prId: pr.id, status: 'failed', costUsd: null },
+    ]);
+    // Two reviews of the same PR → FINDINGS counts only the newer one (rvB),
+    // dismissed findings included. Explicit createdAt: a multi-row insert would
+    // give both rows the same now().
+    const [rvA, rvB] = await pg.handle.db
+      .insert(t.reviews)
+      .values([
+        { workspaceId, prId: pr.id, kind: 'review', score: 40, createdAt: new Date('2026-10-01T10:00:00Z') },
+        { workspaceId, prId: pr.id, kind: 'review', score: 70, createdAt: new Date('2026-10-02T10:00:00Z') },
+      ])
+      .returning();
+    const finding = (reviewId: string, severity: string, dismissed = false) => ({
+      reviewId,
+      file: 'src/a.ts',
+      startLine: 1,
+      endLine: 1,
+      severity,
+      category: 'bug',
+      title: `${severity} finding`,
+      rationale: 'r',
+      confidence: 0.9,
+      dismissedAt: dismissed ? new Date() : null,
+    });
+    await pg.handle.db.insert(t.findings).values([
+      finding(rvA!.id, 'CRITICAL'),
+      finding(rvA!.id, 'WARNING'),
+      finding(rvB!.id, 'CRITICAL', true),
+      finding(rvB!.id, 'SUGGESTION'),
+    ]);
+
+    const res = await app.inject({ method: 'GET', url: `/repos/${repo.id}/pulls` });
+    expect(res.statusCode).toBe(200);
+    const list = res.json() as Array<{
+      id: string;
+      cost_usd: number | null;
+      findings_counts: { critical: number; warning: number; suggestion: number } | null;
+    }>;
+    expect(list.find((p) => p.id === pr.id)!.cost_usd).toBeCloseTo(0.0025);
+    expect(list.find((p) => p.id === unreviewed!.id)!.cost_usd).toBeNull();
+    expect(list.find((p) => p.id === pr.id)!.findings_counts).toEqual({
+      critical: 1,
+      warning: 0,
+      suggestion: 1,
+    });
+    expect(list.find((p) => p.id === unreviewed!.id)!.findings_counts).toBeNull();
 
     await app.close();
   });
