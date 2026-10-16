@@ -1,0 +1,37 @@
+[
+  {
+    "skills": ["frontend-architecture"],
+    "query": "`formatSeconds(ms)` lives in client/src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/helpers.ts. Now RunHistory (client/src/app/repos/[repoId]/pulls/[number]/_components/RunHistory/RunHistory.tsx) needs it too. Where should it go?",
+    "files": [],
+    "expected_behavior": [
+      "Calls formatSeconds a util (generic, domain-free), not a helper, or explicitly applies the helper/util distinction",
+      "Promotes it only as far as the two consumers require, and justifies the chosen level (route-level or src/lib/<kebab>.ts) instead of moving it to shared code just because it is generic",
+      "Updates both imports and deletes the original definition (no re-export left behind)",
+      "Uses the repo's conventions: src/lib/<kebab>.ts for promoted functions, no new utils/ folder"
+    ]
+  },
+  {
+    "skills": ["frontend-architecture"],
+    "query": "Refactor ReviewRunsPanel (code below; assume it lives at client/src/app/repos/[repoId]/pulls/[number]/_components/ReviewRunsPanel/ReviewRunsPanel.tsx). Propose the resulting structure.",
+    "files": ["evals/fixtures/ReviewRunsPanel.tsx"],
+    "expected_behavior": [
+      "Replaces fetch + useEffect + useState with a server-cache hook (reuse usePrRuns from src/lib/hooks/reviews.ts, or add one there); no ad-hoc fetch or hard-coded URL",
+      "Derives sortedRuns/totalCost during render (no state + effect for derived values) and extracts the merge-gate rule into a named pure function with no React import",
+      "Turns renderRow/renderVerdict into real components and names the magic numbers (10, 60, 20) as constants",
+      "Replaces the compact/showCost/showFailed boolean mode props with composition, a variant union or separate components, rather than keeping or adding flags",
+      "Keeps everything colocated in the component folder or route; moves user-facing strings to messages/en"
+    ]
+  },
+  {
+    "skills": ["frontend-architecture"],
+    "query": "Add a 'repo insights' feature that shows stats on the repo page and also reuses the PR list's severity badge. Propose the file structure.",
+    "files": [],
+    "expected_behavior": [
+      "Proposes a route-local feature folder (_components/<Name>/) with only the needed files",
+      "Does not import from another feature; reuses the badge from src/components/findings-severity",
+      "Places API calls, constants and types per the placement table (hooks in src/lib/hooks, pure aggregation in helpers)",
+      "Adapts the shared badge by composition (extract a smaller static piece) instead of adding a boolean/mode prop to it",
+      "Does not add folder barrels or `export *` re-exports"
+    ]
+  }
+]

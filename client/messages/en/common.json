@@ -32,5 +32,17 @@
     "popoverTitleAll": "{count, plural, one {# finding} other {# findings}} · latest review",
     "empty": "No findings",
     "error": "Couldn't load findings"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "body": "This page doesn't exist — the link may be stale.",
+    "cta": "Go to DevDigest"
+  },
+  "routeError": {
+    "title": "Something went wrong",
+    "body": "This screen hit an unexpected error. Try again, or reload the page."
+  },
+  "toast": {
+    "dismiss": "Dismiss"
   }
 }

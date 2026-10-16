@@ -1,0 +1,49 @@
+[
+  {
+    "skills": ["onion-architecture"],
+    "query": "Add an endpoint GET /repos/:id/stale-pulls that returns open PRs not updated for more than 14 days, with the number of findings on each one's latest review.",
+    "files": [],
+    "expected_behavior": [
+      "The new handler in routes.ts declares Zod params/response schemas and makes one service call; the change adds no drizzle-orm/db imports or DB calls to routes.ts (pre-existing legacy imports may stay)",
+      "Puts the query (scoped by workspace) in a repository method that implements a port declared in contract/module types (the port does not mention DB rows); the repository maps rows to those types",
+      "Keeps the 'stale after 14 days' threshold as a named domain constant/pure function and passes the cutoff into the query instead of hard-coding it in SQL",
+      "Builds the service in the module's wiring.ts with explicit narrow dependencies (no Container passed to the service) and does not add a module-local repository to platform/container.ts",
+      "Proposes a unit test for the staleness rule and a *.it.test.ts that exercises the repository query directly (not only through app.inject)"
+    ]
+  },
+  {
+    "skills": ["onion-architecture"],
+    "query": "After a review finishes I want to post a summary to Slack. Where should this code go?",
+    "files": [],
+    "expected_behavior": [
+      "Declares a port (e.g. ReviewNotifier) shaped by the use case, not by the Slack SDK, placed in the reviews module's ports.ts or src/platform/ports/ (not in the client-mirrored shared contracts)",
+      "Implements it as an adapter under src/adapters/<port>/<vendor>.ts that maps SDK/HTTP errors to ExternalServiceError",
+      "Adds a mock to src/adapters/mocks.ts and a container getter with an override slot, and reads the webhook/token through SecretsProvider (no process.env in the service)",
+      "The code that sends the notification receives the notifier (or a resolver) as an explicit dependency from wiring/constructor options, not by reading it from the Container",
+      "Calls the port from the application ring once the review run finishes, keeping message formatting as a pure function"
+    ]
+  },
+  {
+    "skills": ["onion-architecture"],
+    "query": "Review this diff: settings/routes.ts now imports { eq } from 'drizzle-orm' and updates the settings table inside the PUT handler, and AgentsService gets a new constructor argument `container: Container` for a model lookup.",
+    "files": [],
+    "expected_behavior": [
+      "Flags the route-level drizzle query as a presentation→infrastructure (layering) violation and proposes moving it behind a repository plus a service method, not a route that keeps calling the repository directly",
+      "Flags passing the whole Container as a service locator and proposes injecting a narrow dependency (e.g. a resolveLlm function or a model-catalog port)",
+      "Proposes an automated import-boundary check (e.g. dependency-cruiser against a baseline) and notes what such a check can and cannot see in this diff",
+      "Treats the pre-existing legacy violations as known, without asking to rewrite unrelated code"
+    ]
+  },
+  {
+    "skills": ["onion-architecture"],
+    "query": "Plan the new 'conventions' feature: a background job extracts coding conventions from an indexed repo with an LLM, stores them in a new conventions table, and GET /repos/:id/conventions lists them. Later an MCP tool will expose the same list. Which files change?",
+    "files": [],
+    "expected_behavior": [
+      "Keeps the feature in a new modules/conventions/ folder; outside it, touches only the module registry, the DB schema + a generated migration, and shared contracts if a shape reaches the client",
+      "Builds the service and repository in modules/conventions/wiring.ts, and registers the job handler there (or in the route plugin), not inside the service constructor and not in platform/container.ts",
+      "Uses existing container-provided adapters (LLM provider, repo-intel facade) through explicit service dependencies rather than importing other modules' files or concrete adapters",
+      "The job handler parses its payload with a schema and makes one service call; extraction rules or prompt shaping live in domain/application code, not in the handler",
+      "States that the future MCP tool reuses the same wiring builder and contains no queries or business logic"
+    ]
+  }
+]

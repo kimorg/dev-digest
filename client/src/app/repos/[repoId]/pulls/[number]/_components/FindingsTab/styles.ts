@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 export const s = {
+  sectionHint: { fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
   reviewInProgress: {
     marginBottom: 18,
     display: "flex",

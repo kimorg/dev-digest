@@ -6,6 +6,7 @@ import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, API_BASE } from "../api";
 import { notify } from "../toast";
+import { queryKeys } from "./query-keys";
 import type {
   FindingActionKind,
   PrReviewComment,
@@ -14,6 +15,9 @@ import type {
   RunEvent,
   RunSummary,
 } from "@devdigest/shared";
+
+/** How often run lists re-poll while a run is in flight. */
+const RUN_POLL_MS = 4000;
 
 // ---- Active (in-flight) runs — server-side source of truth ----
 export interface ActiveRun {
@@ -27,10 +31,10 @@ export interface ActiveRun {
    Survives reloads/devices; polls while anything is running so it self-clears. */
 export function usePrActiveRuns(prId: string | null | undefined) {
   return useQuery({
-    queryKey: ["pr-active-runs", prId],
+    queryKey: queryKeys.prActiveRuns(prId),
     queryFn: () => api.get<ActiveRun[]>(`/pulls/${prId}/runs/active`),
     enabled: !!prId,
-    refetchInterval: (query) => ((query.state.data?.length ?? 0) > 0 ? 4000 : false),
+    refetchInterval: (query) => ((query.state.data?.length ?? 0) > 0 ? RUN_POLL_MS : false),
   });
 }
 
@@ -39,21 +43,33 @@ export function usePrActiveRuns(prId: string | null | undefined) {
    reload (DB-backed). Polls while anything is running so it self-updates. */
 export function usePrRuns(prId: string | null | undefined) {
   return useQuery({
-    queryKey: ["pr-runs", prId],
+    queryKey: queryKeys.prRuns(prId),
     queryFn: () => api.get<RunSummary[]>(`/pulls/${prId}/runs`),
     enabled: !!prId,
     refetchInterval: (query) =>
-      (query.state.data ?? []).some((r) => r.status === "running") ? 4000 : false,
+      (query.state.data ?? []).some((r) => r.status === "running") ? RUN_POLL_MS : false,
   });
 }
 
 // ---- Persisted reviews + findings for a PR ----
 export function usePrReviews(prId: string | null | undefined) {
   return useQuery({
-    queryKey: ["reviews", prId],
+    queryKey: queryKeys.prReviews(prId),
     queryFn: () => api.get<ReviewRecord[]>(`/pulls/${prId}/reviews`),
     enabled: !!prId,
   });
+}
+
+/** Refresh everything a run touches: in-flight runs, the run timeline and the
+   persisted reviews. Call when a run starts or settles (done, failed, cancelled). */
+export function useRefreshPrRuns(prId: string | null | undefined) {
+  const qc = useQueryClient();
+  return React.useCallback(() => {
+    if (!prId) return;
+    qc.invalidateQueries({ queryKey: queryKeys.prActiveRuns(prId) });
+    qc.invalidateQueries({ queryKey: queryKeys.prRuns(prId) });
+    qc.invalidateQueries({ queryKey: queryKeys.prReviews(prId) });
+  }, [qc, prId]);
 }
 
 /** Delete one run from the PR's run history (+ its trace). */
@@ -64,16 +80,18 @@ export function useDeleteRun(prId: string | null | undefined) {
     // Deleting a run also deletes the review it produced (server-side), so drop
     // both the timeline and the Review Runs list from cache.
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
-      qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      qc.invalidateQueries({ queryKey: queryKeys.prRuns(prId) });
+      qc.invalidateQueries({ queryKey: queryKeys.prReviews(prId) });
     },
   });
 }
 
 /** Request cancellation of an in-flight run (takes effect at the next step). */
-export function useCancelRun() {
+export function useCancelRun(prId: string | null | undefined) {
+  const refresh = useRefreshPrRuns(prId);
   return useMutation({
     mutationFn: (runId: string) => api.post<{ ok: boolean }>(`/runs/${runId}/cancel`),
+    onSuccess: refresh,
   });
 }
 
@@ -82,7 +100,7 @@ export function useDeleteReview(prId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (reviewId: string) => api.del<{ ok: boolean }>(`/reviews/${reviewId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["reviews", prId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.prReviews(prId) }),
   });
 }
 
@@ -90,7 +108,7 @@ export function useDeleteReview(prId: string | null | undefined) {
 /** Existing GitHub PR review comments, fetched live. */
 export function usePrComments(prId: string | null | undefined) {
   return useQuery({
-    queryKey: ["pr-comments", prId],
+    queryKey: queryKeys.prComments(prId),
     queryFn: () => api.get<PrReviewComment[]>(`/pulls/${prId}/comments`),
     enabled: !!prId,
   });
@@ -110,7 +128,7 @@ export function useCreatePrComment(prId: string | null | undefined) {
   return useMutation({
     mutationFn: (input: CreateCommentInput) =>
       api.post<PrReviewComment>(`/pulls/${prId}/comments`, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pr-comments", prId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.prComments(prId) }),
   });
 }
 
@@ -129,8 +147,12 @@ export function useRunReview() {
         ...(agentId ? { agentId } : {}),
         ...(all ? { all } : {}),
       }),
+    // The new runs are in flight: refresh the in-flight list (starts its polling)
+    // and the timeline; reviews refresh again when the runs settle.
     onSuccess: (_d, { prId }) => {
-      qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      qc.invalidateQueries({ queryKey: queryKeys.prActiveRuns(prId) });
+      qc.invalidateQueries({ queryKey: queryKeys.prRuns(prId) });
+      qc.invalidateQueries({ queryKey: queryKeys.prReviews(prId) });
     },
   });
 }
@@ -155,7 +177,7 @@ export function useFindingAction() {
         reply ? { reply } : undefined,
       ),
     onSuccess: (_d, { prId }) => {
-      if (prId) qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      if (prId) qc.invalidateQueries({ queryKey: queryKeys.prReviews(prId) });
     },
   });
 }
@@ -209,6 +231,8 @@ export function useRunEvents(runIds: string[]) {
       for (const es of sources) es.close();
       setRunning(false);
     };
+    // Keyed by the joined ids, not the array: callers pass a fresh array each
+    // render, and resubscribing on identity would reopen every stream.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 

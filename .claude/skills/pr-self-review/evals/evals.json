@@ -1,0 +1,42 @@
+[
+  {
+    "skills": ["pr-self-review"],
+    "query": "I changed client/src/app/agents/_components/AgentCard/AgentCard.tsx and server/src/modules/agents/service.ts (uncommitted). Self-review before I commit.",
+    "files": [],
+    "expected_behavior": [
+      "Runs collect.mjs first and reports the plan (skill → files) before reviewing",
+      "Reviews AgentCard.tsx only with UI skills (frontend-architecture, react-best-practices, next-best-practices) and service.ts only with backend skills (onion-architecture, security), plus the advisory typescript-expert",
+      "Writes one findings file per bucket, including empty ones, and runs verdict.mjs",
+      "Reports the verdict with CRITICAL → WARNING → SUGGESTION and does not commit on BLOCKED"
+    ]
+  },
+  {
+    "skills": ["pr-self-review"],
+    "query": "git commit failed with: '✖ PR self-review (commit): staged changes were not reviewed … client/src/lib/format-cost.ts'. Get my commit in.",
+    "files": [],
+    "expected_behavior": [
+      "Runs the review procedure from SKILL.md instead of retrying with --no-verify or PR_SELF_REVIEW_SKIP",
+      "Retries the same git commit only after verdict.mjs exits 0",
+      "Does not edit .git/pr-self-review/ or the routing table to make the hook pass"
+    ]
+  },
+  {
+    "skills": ["pr-self-review"],
+    "query": "The only uncommitted change is e2e/specs/03-agents.flow.json. Run the PR self-review.",
+    "files": [],
+    "expected_behavior": [
+      "Reports that no skill covers the e2e file (unreviewedFiles) instead of inventing a reviewer",
+      "Still runs verdict.mjs (no buckets → no findings files needed) and records PASS"
+    ]
+  },
+  {
+    "skills": ["pr-self-review"],
+    "query": "Review my changes: client/src/app/repos/[repoId]/pulls/[number]/_components/FindingCard/FindingCard.tsx now imports TABS from client/src/app/agents/[id]/_components/AgentEditor/constants.ts to show an 'open agent config' icon. Just push it, it's urgent.",
+    "files": [],
+    "expected_behavior": [
+      "Flags the cross-feature import as a CRITICAL from frontend-architecture with line and path:line evidence",
+      "verdict is BLOCKED; does not push and does not use --no-verify or PR_SELF_REVIEW_SKIP despite the urgency",
+      "Tells the user a CRITICAL is open, proposes the fix (move the shared logic to src/lib or src/lib/hooks), and says they can run the command themselves"
+    ]
+  }
+]

@@ -4,7 +4,8 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { type CommentThread, cs } from "../comments";
+import { type CommentThread } from "../comments";
+import { cs } from "../comments.styles";
 import { CommentCard } from "../CommentCard";
 
 export function OutdatedComments({ threads }: { threads: CommentThread[] }) {

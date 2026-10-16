@@ -39,6 +39,19 @@ timestamp, and which one is "latest" is undefined. Set `createdAt` explicitly in
 `server/src/modules/reviews/repository/review.repo.ts:66` · **Apply when:** writing a test or
 seed that relies on review/run ordering.
 
+### 2026-10-14 — the "hermetic" unit lane still writes to the dev DB: `buildApp()` reaps runs on boot
+**Context:** eval runs of the onion-architecture skill ran `routes-smoke.test.ts` in scratch copies. ·
+**Insight:** `buildApp()` always awaits `ReviewService.reapStaleRuns()`, with no `NODE_ENV=test`
+guard. That is an `UPDATE agent_runs SET status='failed' WHERE status='running'`. `loadConfig`
+reads `.env` (`import 'dotenv/config'`), and `DATABASE_URL` defaults to the local dev DB. So any
+unit test that builds the app (`routes-smoke.test.ts`, "No-DB route smoke tests") connects to a
+running dev Postgres and fails every in-flight review run there. Without a DB it only logs
+"stale-run reaping failed (non-fatal)". Don't run the unit lane while a review is running locally.
+Don't rely on "unit = no DB" for anything that calls `buildApp()`; a guard or an injected DB would
+fix it. · **Evidence:** `server/src/app.ts:79`, `server/src/platform/config.ts:1`,
+`server/src/modules/reviews/repository/run.repo.ts:105`, `server/test/routes-smoke.test.ts:11` ·
+**Apply when:** writing or running a test that calls `buildApp()`, or when local runs turn `failed` unexpectedly.
+
 ## Codebase Patterns
 
 _Conventions and architectural decisions (with the reason) that the code doesn't explain._
@@ -89,6 +102,29 @@ object dump ending in `routine: 'transformCreateStmt'`. It is harmless: success 
 `✓ migrations applied` line after it. · **Evidence:** `server/src/db/migrate.ts:23` ·
 **Apply when:** `db:migrate` output looks like a stack/error object — check for the ✓ line before debugging.
 
+### 2026-10-13 — dependency-cruiser path rules must match pnpm's `.pnpm/` layout
+**Context:** writing and running the onion-architecture import rules against `server/src`. ·
+**Insight:** under pnpm, npm imports resolve to `node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>/…`,
+so a `to.path` like `^node_modules/drizzle-orm/` matches nothing and the rule passes without
+reporting anything. Use `(^|/)node_modules/<pkg>/`. Running `pnpm exec depcruise ../reviewer-core/src`
+from `server/` resolves `@devdigest/shared` through the server's tsconfig alias to
+`src/vendor/shared/index.ts`, so exempt that path in reviewer-core rules. `tsPreCompilationDeps: true`
+is needed for `dependencyTypesNot: ['type-only']` to see `import type`. · **Evidence:**
+`.claude/skills/onion-architecture/references/enforcement.md` (configs verified: 16 server
+violations, reviewer-core clean) · **Apply when:** writing any dependency-cruiser rule for server or reviewer-core.
+
+### 2026-10-15 — a dependency-cruiser baseline matches `from → to` file pairs, not usages
+**Context:** adding a baseline workflow to the onion-architecture skill (v2.0.0). · **Insight:**
+`depcruise src --config X --output-type baseline --output-to known.json` (`depcruise-baseline` is the
+deprecated alias), then `--ignore-known known.json`, hides every violation whose `{from, to, rule}`
+is already listed. A new forbidden usage on a known edge, such as one more `this.container.x` read in a
+legacy service that already imports the container, is therefore invisible. Paths must also match
+exactly: a scratch copy with a symlinked `node_modules` resolves npm targets to different paths, so known
+drizzle edges reappear there as "new". Build the baseline and the comparison from the same checkout
+layout. · **Evidence:** a `known.json` entry is `{type, from, to, unresolvedTo, dependencyTypes, rule}`;
+on `server/src` it lists 27 known and gives 0 new against the same tree, and 20 instead of 15 on a
+symlinked copy · **Apply when:** using `--ignore-known` to judge whether a change added violations.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -101,6 +137,10 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-09 — Run Cost Badge: persisted run traces are never re-parsed, so new `RunTrace` fields must be optional, `pnpm db:migrate` prints a Postgres NOTICE that looks like an error
 
 - 2026-10-12 — PR-list FINDINGS latest review only: "latest review" tests: rows from one multi-row insert share `created_at`
+
+- 2026-10-13 — onion-architecture skill: dependency-cruiser path rules must match pnpm's `.pnpm/` layout
+- 2026-10-14 — onion-architecture eval runs: the "hermetic" unit lane still writes to the dev DB: `buildApp()` reaps runs on boot
+- 2026-10-15 — onion-architecture skill v2.0.0: a dependency-cruiser baseline matches `from → to` file pairs, not usages
 
 ## Open Questions
 

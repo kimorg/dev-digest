@@ -4,8 +4,9 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { LiveLogStream, type LogLine } from "@devdigest/ui";
-import { useRunEvents } from "../../../../../../../lib/hooks/reviews";
+import { LiveLogStream } from "@devdigest/ui";
+import { useRunEvents } from "@/lib/hooks/reviews";
+import { eventsToLog } from "../../helpers";
 import { LOG_HEIGHT } from "./constants";
 import { s } from "./styles";
 
@@ -19,19 +20,26 @@ export function RunStatus({
   const t = useTranslations("prReview");
   const { events, running } = useRunEvents(runIds);
   const wasRunning = React.useRef(false);
-
+  // Latest onDone without re-running the effect: the parent may pass a new
+  // function every render, and that must not re-fire the "done" callback.
+  const onDoneRef = React.useRef(onDone);
   React.useEffect(() => {
-    if (running) wasRunning.current = true;
-    if (!running && wasRunning.current) onDone?.();
-  }, [running, onDone]);
+    onDoneRef.current = onDone;
+  });
+
+  // Fire onDone once per running → settled transition.
+  React.useEffect(() => {
+    if (running) {
+      wasRunning.current = true;
+    } else if (wasRunning.current) {
+      wasRunning.current = false;
+      onDoneRef.current?.();
+    }
+  }, [running]);
 
   if (runIds.length === 0) return null;
 
-  const log: LogLine[] = events.map((e) => ({
-    t: e.t,
-    k: e.kind as LogLine["k"],
-    m: e.msg,
-  }));
+  const log = eventsToLog(events);
 
   return (
     <div style={s.wrap}>
