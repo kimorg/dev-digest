@@ -3,45 +3,57 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { useRepos } from "../lib/hooks";
-import { AppShell } from "../components/app-shell";
-import { PageContainer } from "../components/page-shell";
-import { EmptyState, Button, Skeleton } from "@devdigest/ui";
+import { useTranslations } from "next-intl";
+import { EmptyState, ErrorState, Button, Skeleton } from "@devdigest/ui";
+import { AppShell } from "@/components/app-shell";
+import { PageContainer } from "@/components/page-shell";
+import { useRepos } from "@/lib/hooks/repos";
+import { ApiError } from "@/lib/api";
+import { routes } from "@/lib/routes";
 
 export default function HomePage() {
+  const t = useTranslations("home");
   const router = useRouter();
-  const { data: repos, isLoading, isError } = useRepos();
+  const { data: repos, isLoading, isError, error, refetch } = useRepos();
+  const first = repos?.[0];
 
   React.useEffect(() => {
-    if (repos && repos.length > 0) {
-      router.replace(`/repos/${repos[0]!.id}/pulls`);
-    }
-  }, [repos, router]);
+    if (first) router.replace(routes.pulls(first.id));
+  }, [first, router]);
 
   return (
-    <AppShell crumb={[{ label: "DevDigest" }]}>
-      <PageContainer title="Welcome to DevDigest" subtitle="Local-first AI PR review">
-        {isLoading ? (
+    <AppShell crumb={[{ label: t("breadcrumb") }]}>
+      <PageContainer title={t("title")} subtitle={t("subtitle")}>
+        {isLoading || first ? (
+          // Loading, or about to redirect to the first repo: show a skeleton with a
+          // manual link in case the redirect is slow.
           <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 480 }}>
             <Skeleton height={20} width={240} />
             <Skeleton height={48} />
-            <Skeleton height={48} />
+            {first && (
+              <div>
+                <p style={{ color: "var(--text-secondary)", margin: "8px 0 14px" }}>{t("redirecting")}</p>
+                <Button kind="primary" onClick={() => router.push(routes.pulls(first.id))}>
+                  {t("openRepo", { name: first.full_name })}
+                </Button>
+              </div>
+            )}
           </div>
-        ) : isError || !repos || repos.length === 0 ? (
-          <EmptyState
-            icon="GitBranch"
-            title="No repositories yet"
-            body="Add a repository to start reviewing pull requests. Set your API keys once in Settings → API Keys."
-            cta="Add repository"
-            onCta={() => router.push("/onboarding")}
+        ) : isError ? (
+          // An API outage is not "no repositories" — don't send the user to add one.
+          <ErrorState
+            title={t("loadErrorTitle")}
+            body={error instanceof ApiError ? error.message : t("loadErrorBody")}
+            onRetry={() => refetch()}
           />
         ) : (
-          <div>
-            <p style={{ color: "var(--text-secondary)", marginBottom: 14 }}>Taking you to your repository…</p>
-            <Button kind="primary" onClick={() => router.push(`/repos/${repos[0]!.id}/pulls`)}>
-              Open {repos[0]!.full_name}
-            </Button>
-          </div>
+          <EmptyState
+            icon="GitBranch"
+            title={t("emptyTitle")}
+            body={t("emptyBody")}
+            cta={t("emptyCta")}
+            onCta={() => router.push(routes.onboarding())}
+          />
         )}
       </PageContainer>
     </AppShell>

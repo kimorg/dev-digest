@@ -6,22 +6,16 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import { Icon, Badge } from "@devdigest/ui";
 import type { ReviewRecord, RunSummary, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
-import { useDeleteReview } from "../../../../../../../lib/hooks/reviews";
-
-const VERDICT_COLOR: Record<string, string> = {
-  request_changes: "var(--crit)",
-  comment: "var(--warn)",
-  approve: "var(--ok)",
-};
-
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
-}
+import { useDeleteReview } from "@/lib/hooks/reviews";
+import { formatDateTime } from "@/lib/format-date";
+import { VERDICT_META } from "../../constants";
+import { countOpenCriticals } from "./helpers";
+import { s } from "./styles";
 
 export function ReviewRunAccordion({
   review,
@@ -32,6 +26,8 @@ export function ReviewRunAccordion({
   targetRunId = null,
   targetNonce = 0,
   run,
+  isKeyboardActive = false,
+  onActivate,
 }: {
   review: ReviewRecord;
   prId: string;
@@ -44,102 +40,89 @@ export function ReviewRunAccordion({
   targetNonce?: number;
   /** This review's agent_runs row (cost + tokens for the VerdictBanner), when loaded. */
   run?: RunSummary;
+  /** Whether this run's findings panel owns the j/k/a/d shortcuts. */
+  isKeyboardActive?: boolean;
+  /** Called when the user opens or interacts with this run (makes it keyboard-active). */
+  onActivate?: () => void;
 }) {
+  const t = useTranslations("prReview");
   const [open, setOpen] = React.useState(defaultOpen);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     if (review.run_id && review.run_id === targetRunId) {
       setOpen(true);
+      onActivate?.();
       rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetRunId, targetNonce, review.run_id]);
   const del = useDeleteReview(prId);
   const findings = review.findings;
-  const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;
-  const verdictColor = review.verdict ? VERDICT_COLOR[review.verdict] ?? "var(--text-muted)" : "var(--text-muted)";
+  const blockers = countOpenCriticals(findings);
+  const agentName = review.agent_name ?? t("reviewRun.agentFallback");
+  const verdictColor = review.verdict ? VERDICT_META[review.verdict]?.c ?? "var(--text-muted)" : "var(--text-muted)";
 
   return (
     <div
       ref={rootRef}
       id={review.run_id ? `review-run-${review.run_id}` : undefined}
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 10,
-        background: "var(--bg-surface)",
-        marginBottom: 14,
-        overflow: "hidden",
-        scrollMarginTop: 16,
-      }}
+      onPointerDownCapture={onActivate}
+      onFocusCapture={onActivate}
+      style={s.root}
     >
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setOpen((o) => !o)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") setOpen((o) => !o);
-        }}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: "13px 16px",
-          cursor: "pointer",
-          color: "var(--text-primary)",
-        }}
-      >
-        <Icon.Cpu size={15} style={{ color: "var(--text-muted)" }} />
-        <span style={{ fontWeight: 600, fontSize: 14 }}>{review.agent_name ?? "Agent"}</span>
+      {/* The whole header toggles on click; the chevron <button> is the keyboard
+          entry point (its click bubbles here). Delete stops propagation, so it is
+          never nested inside another interactive element. */}
+      <div onClick={() => setOpen((o) => !o)} style={s.header}>
+        <Icon.Cpu size={15} style={s.agentIcon} />
+        <span style={s.agentName}>{agentName}</span>
         {review.verdict && (
           <Badge color={verdictColor} bg="transparent">
-            {review.verdict.replace("_", " ")}
+            {t(`reviewRun.verdictBadge.${review.verdict}`)}
           </Badge>
         )}
-        <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-          {findings.length} finding{findings.length === 1 ? "" : "s"}
-          {blockers > 0 ? ` · ${blockers} blocker${blockers === 1 ? "" : "s"}` : ""}
+        <span style={s.counts}>
+          {t("reviewRun.findings", { count: findings.length })}
+          {blockers > 0 ? t("reviewRun.blockers", { count: blockers }) : ""}
         </span>
-        <span style={{ flex: 1 }} />
+        <span style={s.spacer} />
         {review.score != null && (
           <Badge mono color="var(--text-secondary)">
             {review.score}
           </Badge>
         )}
-        <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          {formatWhen(review.created_at)}
+        <span className="mono" style={s.when}>
+          {formatDateTime(review.created_at)}
         </span>
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
-            if (window.confirm(`Delete this "${review.agent_name ?? "agent"}" review run and its findings?`)) {
+            if (window.confirm(t("reviewRun.confirmDelete", { agent: agentName }))) {
               del.mutate(review.id);
             }
           }}
           disabled={del.isPending}
-          title="Delete this review run"
-          aria-label="Delete this review run"
-          style={{
-            background: "none",
-            border: "none",
-            cursor: del.isPending ? "not-allowed" : "pointer",
-            color: "var(--text-muted)",
-            display: "inline-flex",
-            padding: 4,
-          }}
+          title={t("reviewRun.delete")}
+          aria-label={t("reviewRun.delete")}
+          style={s.deleteBtn(del.isPending)}
         >
-          <Icon.Trash size={14} style={del.isPending ? { animation: "ddspin 1s linear infinite" } : undefined} />
+          <Icon.Trash size={14} style={del.isPending ? s.spin : undefined} />
         </button>
-        <Icon.ChevronDown
-          size={16}
-          style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s", color: "var(--text-muted)" }}
-        />
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-label={t(open ? "reviewRun.collapse" : "reviewRun.expand", { agent: agentName })}
+          style={s.toggleBtn}
+        >
+          <Icon.ChevronDown size={16} style={s.chevron(open)} />
+        </button>
       </div>
 
       {open && (
-        <div style={{ padding: "0 16px 16px" }}>
+        <div style={s.body}>
           {review.verdict && (
-            <div style={{ marginBottom: 16 }}>
+            <div style={s.banner}>
               <VerdictBanner
                 verdict={review.verdict as Verdict}
                 summary={review.summary}
@@ -158,6 +141,7 @@ export function ReviewRunAccordion({
             prId={prId}
             repoFullName={repoFullName}
             headSha={headSha}
+            isKeyboardActive={isKeyboardActive}
           />
         </div>
       )}

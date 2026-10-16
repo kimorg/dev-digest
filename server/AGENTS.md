@@ -24,7 +24,7 @@ pnpm db:seed       # idempotent demo data (acme/payments-api, PR #482)
 
 ## Where things live
 
-- `src/modules/<name>/` — feature plugins: `routes.ts` → `service.ts` → `repository.ts`
+- `src/modules/<name>/` — feature plugins: `routes.ts` → `service.ts` → `repository.ts`, assembled in `wiring.ts`
 - `src/modules/repo-intel/` — codebase indexer ([its README](src/modules/repo-intel/README.md))
 - `src/adapters/` — ports to the outside world (LLM, GitHub, git, ast-grep, secrets…); `mocks.ts` for tests
 - `src/platform/` — DI container, config, errors, SSE, jobs, model router, run traces
@@ -45,8 +45,8 @@ pnpm db:seed       # idempotent demo data (acme/payments-api, PR #482)
 
 Where the code is inconsistent, follow the rule for new code and leave legacy names as they are.
 
-- **Files:** kebab-case (`run-executor.ts`). Module roles are fixed: `routes.ts` · `service.ts` ·
-  `repository.ts` · `constants.ts` · `helpers.ts` · `types.ts`; a big repository splits into
+- **Files:** kebab-case (`run-executor.ts`). Module roles are fixed: `routes.ts` · `wiring.ts` · `service.ts` ·
+  `ports.ts` · `domain.ts` · `repository.ts` · `constants.ts` · `helpers.ts` · `types.ts`; a big repository splits into
   `repository/<aggregate>.repo.ts`. A `_` prefix (`modules/_shared/`) = shared internals, not a module.
 - **Classes:** `<Domain>Service` / `<Domain>Repository`, domain **singular** (`RepoService`,
   `ReviewRepository`). Legacy: `AgentsService`, `AgentsRepository`.
@@ -94,6 +94,8 @@ Where the code is inconsistent, follow the rule for new code and leave legacy na
 ## Read before you work
 
 - Feature spec for the task → [specs/](specs/README.md)
+- Layering (which ring a file belongs to, import direction, ports/adapters) → the
+  [`onion-architecture`](../.claude/skills/onion-architecture/SKILL.md) skill
 - Deeper reference → [docs/](docs/README.md) · test strategy → [../TESTING.md](../TESTING.md)
 - Past learnings → [INSIGHTS.md](INSIGHTS.md) — read before non-trivial work; new entries are
   added by the `engineering-insights` skill (append-only, no duplicates).

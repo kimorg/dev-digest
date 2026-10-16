@@ -4,13 +4,7 @@
 "use client";
 
 import React from "react";
-
-type ToastKind = "success" | "error" | "info";
-interface Toast {
-  id: number;
-  kind: ToastKind;
-  message: string;
-}
+import { Toaster, type ToastItem, type ToastKind } from "@/components/toaster";
 
 interface ToastApi {
   toast: (message: string, kind?: ToastKind) => void;
@@ -38,21 +32,28 @@ export const notify = {
   info: (m: string) => activePusher?.(m, "info"),
 };
 
-const COLORS: Record<ToastKind, { bg: string; border: string; icon: string }> = {
-  success: { bg: "var(--ok-bg, #052e1c)", border: "var(--ok)", icon: "✓" },
-  error: { bg: "var(--crit-bg, #2e0a0a)", border: "var(--crit)", icon: "✕" },
-  info: { bg: "var(--bg-elevated)", border: "var(--border-strong)", icon: "ℹ" },
-};
+/** Toasts auto-dismiss after this long (ms). */
+const TOAST_DISMISS_MS = 4000;
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = React.useState<Toast[]>([]);
+  const [items, setItems] = React.useState<ToastItem[]>([]);
   const seq = React.useRef(1);
+  const timers = React.useRef(new Set<ReturnType<typeof setTimeout>>());
+
+  // Drop pending auto-dismiss timers if the provider unmounts.
+  React.useEffect(() => {
+    const pending = timers.current;
+    return () => pending.forEach(clearTimeout);
+  }, []);
 
   const push = React.useCallback((message: string, kind: ToastKind = "info") => {
     const id = seq.current++;
     setItems((prev) => [...prev, { id, kind, message }]);
-    // auto-dismiss after 4s
-    setTimeout(() => setItems((prev) => prev.filter((t) => t.id !== id)), 4000);
+    const timer = setTimeout(() => {
+      timers.current.delete(timer);
+      setItems((prev) => prev.filter((t) => t.id !== id));
+    }, TOAST_DISMISS_MS);
+    timers.current.add(timer);
   }, []);
 
   const api = React.useMemo<ToastApi>(
@@ -73,55 +74,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     };
   }, [push]);
 
+  const dismiss = React.useCallback((id: number) => setItems((prev) => prev.filter((x) => x.id !== id)), []);
+
   return (
     <ToastCtx.Provider value={api}>
       {children}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 20,
-          right: 20,
-          zIndex: 1000,
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-          maxWidth: 380,
-        }}
-        role="status"
-        aria-live="polite"
-      >
-        {items.map((t) => {
-          const c = COLORS[t.kind];
-          return (
-            <div
-              key={t.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "12px 16px",
-                borderRadius: 9,
-                background: c.bg,
-                border: `1px solid ${c.border}`,
-                color: "var(--text-primary)",
-                fontSize: 14,
-                boxShadow: "0 6px 24px rgba(0,0,0,0.3)",
-                animation: "ddToastIn .16s ease-out",
-              }}
-            >
-              <span style={{ color: c.border, fontWeight: 700 }}>{c.icon}</span>
-              <span style={{ flex: 1 }}>{t.message}</span>
-              <button
-                onClick={() => setItems((prev) => prev.filter((x) => x.id !== t.id))}
-                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16 }}
-                aria-label="Dismiss"
-              >
-                ×
-              </button>
-            </div>
-          );
-        })}
-      </div>
+      <Toaster items={items} onDismiss={dismiss} />
     </ToastCtx.Provider>
   );
 }

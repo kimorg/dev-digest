@@ -1,0 +1,179 @@
+{
+  "$comment": "Which skill reviews which changed files. Globs: ** (any depth), * (one segment), ? and {a,b} (literal alternatives). Brackets are literal, so Next.js paths like [id] work as-is. `contains` = regexes; the file is routed only when its diff or current content matches one. `alsoWhen` = extra { include, contains } triggers for the same skill. `advisory` caps findings at WARNING. `severityMap` maps the skill's own scale onto CRITICAL | WARNING | SUGGESTION. Files matching `exclude` are not reviewed and not checked by the git hooks.",
+  "exclude": [
+    "server/clones/**",
+    "**/node_modules/**",
+    "**/pnpm-lock.yaml",
+    "**/package-lock.json",
+    "**/*.md",
+    ".claude/**",
+    ".cursor/**",
+    ".githooks/**",
+    "client/src/vendor/ui/**"
+  ],
+  "ignoreSkills": [
+    "mermaid-diagram",
+    "engineering-insights",
+    "pr-self-review"
+  ],
+  "skills": [
+    {
+      "skill": "frontend-architecture",
+      "area": "ui",
+      "mode": "gating",
+      "include": [
+        "client/src/**/*.{ts,tsx}",
+        "client/messages/**"
+      ]
+    },
+    {
+      "skill": "react-best-practices",
+      "area": "ui",
+      "mode": "gating",
+      "include": [
+        "client/src/**/*.tsx",
+        "client/src/lib/hooks/**"
+      ],
+      "exclude": [
+        "client/**/*.test.{ts,tsx}"
+      ]
+    },
+    {
+      "skill": "next-best-practices",
+      "area": "ui",
+      "mode": "gating",
+      "include": [
+        "client/src/app/**",
+        "client/next.config.*",
+        "client/src/middleware.ts"
+      ],
+      "exclude": [
+        "client/**/*.test.{ts,tsx}"
+      ]
+    },
+    {
+      "skill": "react-testing-library",
+      "area": "ui",
+      "mode": "advisory",
+      "include": [
+        "client/**/*.test.{ts,tsx}"
+      ]
+    },
+    {
+      "skill": "onion-architecture",
+      "area": "backend",
+      "mode": "gating",
+      "include": [
+        "server/src/**/*.ts",
+        "reviewer-core/src/**/*.ts"
+      ],
+      "exclude": [
+        "**/*.test.ts"
+      ]
+    },
+    {
+      "skill": "fastify-best-practices",
+      "area": "backend",
+      "mode": "gating",
+      "include": [
+        "server/src/{app,server}.ts",
+        "server/src/modules/**/routes.ts",
+        "server/src/platform/**"
+      ],
+      "exclude": [
+        "**/*.test.ts"
+      ]
+    },
+    {
+      "skill": "drizzle-orm-patterns",
+      "area": "backend",
+      "mode": "gating",
+      "include": [
+        "server/src/db/**",
+        "server/src/modules/**/repository*.ts",
+        "server/drizzle.config.ts"
+      ],
+      "exclude": [
+        "**/*.test.ts"
+      ],
+      "alsoWhen": [
+        {
+          "include": [
+            "server/src/**/*.ts",
+            "reviewer-core/src/**/*.ts"
+          ],
+          "contains": [
+            "from ['\"]drizzle-orm"
+          ]
+        }
+      ]
+    },
+    {
+      "skill": "postgresql-table-design",
+      "area": "backend",
+      "mode": "gating",
+      "include": [
+        "server/src/db/schema.ts",
+        "server/src/db/schema/**",
+        "server/src/db/migrations/**"
+      ]
+    },
+    {
+      "skill": "zod",
+      "area": "fullstack",
+      "mode": "advisory",
+      "include": [
+        "**/*.{ts,tsx}"
+      ],
+      "contains": [
+        "from ['\"]zod['\"]",
+        "\\bz\\.(object|enum|union|string|array)\\("
+      ]
+    },
+    {
+      "skill": "security",
+      "area": "fullstack",
+      "mode": "gating",
+      "include": [
+        "server/src/**",
+        "reviewer-core/src/**",
+        "client/src/lib/api.ts",
+        "client/src/app/**/route.ts",
+        "client/next.config.*",
+        "**/.env*",
+        "scripts/**",
+        ".github/workflows/**"
+      ],
+      "exclude": [
+        "**/*.test.ts"
+      ],
+      "severityMap": {
+        "HIGH": "CRITICAL",
+        "MEDIUM": "WARNING",
+        "LOW": "WARNING"
+      },
+      "alsoWhen": [
+        {
+          "include": [
+            "client/src/**/*.{ts,tsx}"
+          ],
+          "contains": [
+            "dangerouslySetInnerHTML",
+            "process\\.env",
+            "localStorage|sessionStorage",
+            "\\beval\\(|new Function\\(",
+            "window\\.location\\s*="
+          ]
+        }
+      ]
+    },
+    {
+      "skill": "typescript-expert",
+      "area": "fullstack",
+      "mode": "advisory",
+      "include": [
+        "**/*.{ts,tsx,mts,mjs}"
+      ]
+    }
+  ]
+}

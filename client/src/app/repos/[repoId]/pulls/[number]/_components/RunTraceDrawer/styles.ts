@@ -63,6 +63,8 @@ export const s = {
     overflow: "hidden",
   } satisfies CSSProperties,
   promptHead: { display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", cursor: "pointer" } satisfies CSSProperties,
+  /** Unstyled text button (keyboard entry point inside a clickable row). */
+  textBtn: { background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer" } satisfies CSSProperties,
   promptDot: (color: string): CSSProperties => ({ width: 7, height: 7, borderRadius: 2, background: color }),
   promptLabel: { fontSize: 13, fontWeight: 600 } satisfies CSSProperties,
   promptToggle: { marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,

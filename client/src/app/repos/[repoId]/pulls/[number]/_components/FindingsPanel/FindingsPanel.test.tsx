@@ -4,13 +4,17 @@ import { NextIntlClientProvider } from "next-intl";
 import type { FindingRecord } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
 
-vi.mock("../../../../../../../lib/hooks/reviews", () => ({
-  useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
+const mutate = vi.fn();
+vi.mock("@/lib/hooks/reviews", () => ({
+  useFindingAction: () => ({ mutate, isPending: false }),
 }));
 
 import { FindingsPanel } from "./FindingsPanel";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  mutate.mockClear();
+});
 
 const FINDINGS: FindingRecord[] = [
   {
@@ -87,5 +91,28 @@ describe("FindingsPanel — severity pills", () => {
     fireEvent.click(screen.getByRole("button", { name: /Warning/ }));
     expect(screen.getByText("N+1 query")).toBeInTheDocument();
     expect(screen.queryByText("Hardcoded secret")).not.toBeInTheDocument();
+  });
+});
+
+describe("FindingsPanel — keyboard shortcuts", () => {
+  it("only the keyboard-active panel acts when several are open", () => {
+    renderWithIntl(
+      <>
+        <FindingsPanel findings={FINDINGS} prId="pr1" isKeyboardActive />
+        <FindingsPanel findings={[{ ...FINDINGS[0]!, id: "f2" }]} prId="pr1" isKeyboardActive={false} />
+      </>,
+    );
+    fireEvent.keyDown(window, { key: "a" });
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(mutate).toHaveBeenCalledWith({ findingId: "f1", action: "accept", prId: "pr1" });
+  });
+
+  it("ignores shortcuts typed into a text field", () => {
+    renderWithIntl(<FindingsPanel findings={FINDINGS} prId="pr1" />);
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    fireEvent.keyDown(input, { key: "d" });
+    expect(mutate).not.toHaveBeenCalled();
+    input.remove();
   });
 });

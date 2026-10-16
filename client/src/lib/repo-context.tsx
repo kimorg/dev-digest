@@ -4,16 +4,22 @@
 
 import React from "react";
 import { usePathname } from "next/navigation";
-import { useRepos } from "./hooks";
+import { useRepos } from "./hooks/repos";
 import type { Repo } from "./types";
 
+/** localStorage key for the last-selected repo. */
+const STORAGE_KEY = "dd-repo";
+
+/** Stable empty list while repos load (keeps consumers' memo deps steady). */
+const NO_REPOS: Repo[] = [];
+
+/* The context holds only the user's stored choice — repos come from the query
+   cache and the URL from the router, so they're read where needed instead of
+   being copied into context (which re-rendered every consumer on each change). */
 const RepoCtx = React.createContext<{
-  repoId: string | null;
+  storedRepoId: string | null;
   setRepoId: (id: string) => void;
-  repos: Repo[];
-  activeRepo: Repo | null;
-  reposLoaded: boolean;
-}>({ repoId: null, setRepoId: () => {}, repos: [], activeRepo: null, reposLoaded: false });
+}>({ storedRepoId: null, setRepoId: () => {} });
 
 function repoIdFromPath(pathname: string | null): string | null {
   if (!pathname) return null;
@@ -22,13 +28,11 @@ function repoIdFromPath(pathname: string | null): string | null {
 }
 
 export function RepoProvider({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const { data: repos, isSuccess: reposLoaded } = useRepos();
-  const [stored, setStored] = React.useState<string | null>(null);
+  const [storedRepoId, setStored] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     try {
-      setStored(localStorage.getItem("dd-repo"));
+      setStored(localStorage.getItem(STORAGE_KEY));
     } catch {
       /* ignore */
     }
@@ -37,26 +41,31 @@ export function RepoProvider({ children }: { children: React.ReactNode }) {
   const setRepoId = React.useCallback((id: string) => {
     setStored(id);
     try {
-      localStorage.setItem("dd-repo", id);
+      localStorage.setItem(STORAGE_KEY, id);
     } catch {
       /* ignore */
     }
   }, []);
 
-  const list = repos ?? [];
-  const fromPath = repoIdFromPath(pathname);
-  const repoId = fromPath ?? stored ?? list[0]?.id ?? null;
-  const activeRepo = list.find((r) => r.id === repoId) ?? null;
-
-  return (
-    <RepoCtx.Provider value={{ repoId, setRepoId, repos: list, activeRepo, reposLoaded }}>
-      {children}
-    </RepoCtx.Provider>
-  );
+  const value = React.useMemo(() => ({ storedRepoId, setRepoId }), [storedRepoId, setRepoId]);
+  return <RepoCtx.Provider value={value}>{children}</RepoCtx.Provider>;
 }
 
-export function useActiveRepo() {
-  return React.useContext(RepoCtx);
+/** The active repo. Priority: repoId in the URL path > stored choice > first repo. */
+export function useActiveRepo(): {
+  repoId: string | null;
+  setRepoId: (id: string) => void;
+  repos: Repo[];
+  activeRepo: Repo | null;
+  reposLoaded: boolean;
+} {
+  const { storedRepoId, setRepoId } = React.useContext(RepoCtx);
+  const pathname = usePathname();
+  const { data, isSuccess: reposLoaded } = useRepos();
+  const repos = data ?? NO_REPOS;
+  const repoId = repoIdFromPath(pathname) ?? storedRepoId ?? repos[0]?.id ?? null;
+  const activeRepo = repos.find((r) => r.id === repoId) ?? null;
+  return { repoId, setRepoId, repos, activeRepo, reposLoaded };
 }
 
 /**

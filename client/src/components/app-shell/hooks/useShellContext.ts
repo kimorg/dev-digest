@@ -5,10 +5,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ShellContext } from "@devdigest/ui";
-import { useTheme } from "../../../lib/theme";
-import { useActiveRepo } from "../../../lib/repo-context";
-import { usePulls, useDeleteRepo } from "../../../lib/hooks";
+import { useTheme } from "@/lib/theme";
+import { useActiveRepo } from "@/lib/repo-context";
+import { useNeedsReviewCount } from "@/lib/hooks/pulls";
+import { useDeleteRepo } from "@/lib/hooks/repos";
 import { activeKeyFor, toShellRepo } from "../helpers";
+import { routes } from "@/lib/routes";
 
 interface ShellContextOptions {
   onOpenCommandPalette: () => void;
@@ -25,18 +27,18 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
   const router = useRouter();
   const { theme, toggle } = useTheme();
   const { repoId, repos, activeRepo, setRepoId } = useActiveRepo();
-  const { data: pulls } = usePulls(repoId);
+  const { data: needsReviewCount } = useNeedsReviewCount(repoId);
   const deleteRepo = useDeleteRepo();
 
   const onSelectRepo = React.useCallback(
     (id: string) => {
       setRepoId(id);
-      router.push(`/repos/${id}/pulls`);
+      router.push(routes.pulls(id));
     },
     [setRepoId, router],
   );
 
-  const onAddRepo = React.useCallback(() => router.push("/onboarding"), [router]);
+  const onAddRepo = React.useCallback(() => router.push(routes.onboarding()), [router]);
 
   const onRemoveRepo = React.useCallback(
     (id: string) => {
@@ -49,7 +51,7 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
         onSuccess: () => {
           if (repoId === id) {
             const next = repos.find((r) => r.id !== id);
-            router.push(next ? `/repos/${next.id}/pulls` : "/onboarding");
+            router.push(next ? routes.pulls(next.id) : routes.onboarding());
           }
         },
       });
@@ -62,8 +64,8 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
       Link,
       activeKey: activeKeyFor(pathname),
       repoId,
-      repos: repos.map(toShellRepo),
-      activeRepo: activeRepo ? toShellRepo(activeRepo) : null,
+      repos: repos.map((r) => toShellRepo(r, t)),
+      activeRepo: activeRepo ? toShellRepo(activeRepo, t) : null,
       theme,
       onToggleTheme: toggle,
       onOpenCommandPalette,
@@ -72,9 +74,10 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
       onRemoveRepo,
       // Sidebar badge = PRs that still NEED review, not the total PR count.
       // 0 → undefined so the badge hides entirely when nothing needs review.
-      prCount: pulls?.filter((p) => p.status === "needs_review").length || undefined,
+      prCount: needsReviewCount || undefined,
     }),
     [
+      t,
       pathname,
       repoId,
       repos,
@@ -85,7 +88,7 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
       onSelectRepo,
       onAddRepo,
       onRemoveRepo,
-      pulls,
+      needsReviewCount,
     ],
   );
 }

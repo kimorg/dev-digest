@@ -14,14 +14,16 @@ import {
   ConfidenceNum,
   Button,
   Markdown,
+  SEV,
   type Severity,
   type Category,
 } from "@devdigest/ui";
 import type { FindingRecord, FindingActionKind } from "@devdigest/shared";
-import { SEV_COLOR, SEV_COLOR_FALLBACK } from "./constants";
-import { lineLabel } from "./helpers";
-import { githubBlobUrl } from "../../../../../../../lib/github-urls";
+import { lineLabel } from "@/components/findings-severity";
+import { findingBlobUrl } from "@/lib/github-urls";
+import { SEV_COLOR_FALLBACK } from "./constants";
 import { s } from "./styles";
+import { UNSTYLED_BUTTON } from "@/lib/unstyled-button";
 
 export function FindingCard({
   f,
@@ -42,11 +44,8 @@ export function FindingCard({
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
-  const sevColor = SEV_COLOR[f.severity] ?? SEV_COLOR_FALLBACK;
-  const fileHref =
-    repoFullName && headSha
-      ? githubBlobUrl(repoFullName, headSha, f.file, f.start_line, f.end_line)
-      : undefined;
+  const sevColor = SEV[f.severity as Severity]?.c ?? SEV_COLOR_FALLBACK;
+  const fileHref = findingBlobUrl(repoFullName, headSha, f);
   const accepted = !!f.accepted_at;
   const dismissed = !!f.dismissed_at;
   const muted = accepted || dismissed;
@@ -59,7 +58,11 @@ export function FindingCard({
         </div>
         <div style={s.headerMain}>
           <div style={s.titleRow}>
-            <span style={s.title(muted, dismissed)}>{f.title}</span>
+            {/* Keyboard entry point for the header toggle (its click bubbles up);
+                the header also holds a file link, so it can't be a <button> itself. */}
+            <button type="button" aria-expanded={expanded} style={{ ...UNSTYLED_BUTTON, width: "auto", ...s.title(muted, dismissed) }}>
+              {f.title}
+            </button>
             <CategoryTag category={f.category as Category} />
             {accepted && <span style={s.acceptedTag}>{t("finding.accepted")}</span>}
             {dismissed && <span style={s.dismissedTag}>{t("finding.dismissed")}</span>}
