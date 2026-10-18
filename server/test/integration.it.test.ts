@@ -140,8 +140,9 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     });
     const repoId = (await app.inject({ method: 'GET', url: '/repos' })).json()[0]!.id;
     const poll = await app.inject({ method: 'POST', url: `/repos/${repoId}/poll` });
-    expect(poll.json().reviewTriggered).toBe(false);
+    expect(poll.json().reviewTriggered).toBeFalsy();
     expect(poll.json().synced).toBeGreaterThan(0);
+    expect(poll.json().polled_at).toEqual(expect.any(String));
     await app.close();
   });
 });
