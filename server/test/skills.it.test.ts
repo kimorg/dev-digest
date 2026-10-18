@@ -83,6 +83,22 @@ d('skills (Testcontainers pg)', () => {
     expect(typeof uncovered.updated_at).toBe('string');
   });
 
+  it('links the four seeded API Contract skills to API Contract Reviewer, in order', async () => {
+    const agents = (await app.inject({ method: 'GET', url: '/agents' })).json();
+    const agent = agents.find((a: { name: string }) => a.name === 'API Contract Reviewer');
+    expect(agent).toMatchObject({ enabled: true });
+
+    const skills = (await app.inject({ method: 'GET', url: '/skills' })).json();
+    const nameById = new Map(skills.map((s: { id: string; name: string }) => [s.id, s.name]));
+    const links = (await app.inject({ method: 'GET', url: `/agents/${agent.id}/skills` })).json();
+    expect(links.map((l: { skill_id: string }) => nameById.get(l.skill_id))).toEqual([
+      'Breaking Change',
+      'Response Schema',
+      'Semver Discipline',
+      'Deprecation Policy',
+    ]);
+  });
+
   it('creates v1 with a snapshot; GET returns it', async () => {
     const created = await createSkill({ type: 'rubric' });
     expect(created).toMatchObject({ version: 1, enabled: true, source: 'manual', agent_count: 0 });

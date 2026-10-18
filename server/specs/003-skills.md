@@ -154,3 +154,7 @@ Open:
 - 2026-10-17 — implemented (server). DELETE answers 200 `{ ok: true }` like the agents
   module (was 204); restoring a body equal to the current one creates no version; `skill_ids`
   with duplicates → 422; the trace's token counts are computed before the run is marked `done`.
+- 2026-10-18 — seed adds **API Contract Reviewer** (`docs/agent-prompts/api-contract-reviewer.md`)
+  with four linked skills in order — Breaking Change, Response Schema, Semver Discipline,
+  Deprecation Policy (`docs/skills/`, mirrored in `server/src/db/seed-skills.ts`). This is the
+  agent + breaking-change skill that control experiment #18 needs; its fixture PR is still open.

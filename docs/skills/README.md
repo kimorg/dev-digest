@@ -43,6 +43,18 @@ an ignored file and never run or store it. Rebuild the archive after editing the
 cd docs/skills && rm -f flaky-test-patterns.zip && zip -rX flaky-test-patterns.zip flaky-test-patterns
 ```
 
+## API Contract Reviewer skills
+
+| Skill | Type | How it gets into the DB |
+|-------|------|-------------------------|
+| [Breaking Change](breaking-change/SKILL.md) | custom | seeded, linked #1 |
+| [Response Schema](response-schema/SKILL.md) | rubric | seeded, linked #2 |
+| [Semver Discipline](semver-discipline/SKILL.md) | convention | seeded, linked #3 |
+| [Deprecation Policy](deprecation-policy/SKILL.md) | convention | seeded, linked #4 |
+
+When several of these match one change, the agent's prompt reports it once, at the most
+severe level, and names the other rules in the rationale.
+
 ## Trust
 
 An imported skill is somebody else's instructions inside your agent's prompt. Read the
