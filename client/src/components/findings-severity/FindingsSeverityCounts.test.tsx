@@ -12,7 +12,7 @@ const usePrReviews = vi.fn((_prId: string) => reviewsState);
 vi.mock("@/lib/hooks/reviews", () => ({ usePrReviews: (id: string) => usePrReviews(id) }));
 
 import { FindingsSeverityCounts } from "./FindingsSeverityCounts";
-import { countBySeverity, sortBySeverity } from "./helpers";
+import { countBySeverity, latestReviewPerAgent, sortBySeverity } from "./helpers";
 import { HOVER_CLOSE_MS, HOVER_OPEN_MS } from "./constants";
 
 afterEach(() => {
@@ -157,11 +157,16 @@ describe("FindingsSeverityCounts", () => {
   });
 });
 
-function review(id: string, createdAt: string, findings: FindingRecord[]): ReviewRecord {
+function review(
+  id: string,
+  createdAt: string,
+  findings: FindingRecord[],
+  agentId: string | null = null,
+): ReviewRecord {
   return {
     id,
     pr_id: "pr1",
-    agent_id: null,
+    agent_id: agentId,
     run_id: null,
     kind: "review",
     verdict: "request_changes",
@@ -172,6 +177,20 @@ function review(id: string, createdAt: string, findings: FindingRecord[]): Revie
     findings,
   };
 }
+
+describe("latestReviewPerAgent", () => {
+  it("keeps the newest review of each agent (agent-less reviews are one group), skips summaries", () => {
+    const picked = latestReviewPerAgent([
+      review("a2", "2026-10-03T00:00:00Z", [], "agentA"),
+      { ...review("sum", "2026-10-03T00:00:00Z", [], "agentB"), kind: "summary" },
+      review("b1", "2026-10-02T00:00:00Z", [], "agentB"),
+      review("a1", "2026-10-01T00:00:00Z", [], "agentA"),
+      review("n2", "2026-10-01T00:00:00Z", []),
+      review("n1", "2026-09-30T00:00:00Z", []),
+    ]);
+    expect(picked.map((r) => r.id)).toEqual(["a2", "b1", "n2"]);
+  });
+});
 
 describe("sortBySeverity", () => {
   it("orders CRITICAL → WARNING → SUGGESTION, stable within a severity", () => {
@@ -187,12 +206,12 @@ describe("sortBySeverity", () => {
 
 describe("FindingsSeverityCounts — hover trigger (PR list)", () => {
   const COUNTS = { critical: 1, warning: 1, suggestion: 1 };
-  // Reviews come newest-first from the API; only the newest one is listed.
+  // Reviews come newest-first from the API; only each agent's newest one is listed.
   const LATEST = [
     finding({ id: "s1", severity: "SUGGESTION", category: "style", title: "Rename helper" }),
-    finding({ id: "w1", severity: "WARNING", category: "perf", title: "N+1 query" }),
     finding({ id: "c1", title: "Hardcoded secret" }),
   ];
+  const OTHER_AGENT = [finding({ id: "w1", severity: "WARNING", category: "perf", title: "N+1 query" })];
   const OLDER = [finding({ id: "old", title: "Old finding from an earlier review" })];
 
   function hoverCell() {
@@ -204,7 +223,11 @@ describe("FindingsSeverityCounts — hover trigger (PR list)", () => {
 
   it("renders plain counts (no buttons) and opens one popover with all findings on hover", () => {
     vi.useFakeTimers();
-    reviewsState.data = [review("r2", "2026-10-02T00:00:00Z", LATEST), review("r1", "2026-10-01T00:00:00Z", OLDER)];
+    reviewsState.data = [
+      review("a2", "2026-10-03T00:00:00Z", LATEST, "agentA"),
+      review("b1", "2026-10-02T00:00:00Z", OTHER_AGENT, "agentB"),
+      review("a1", "2026-10-01T00:00:00Z", OLDER, "agentA"),
+    ];
     renderCounts(<FindingsSeverityCounts counts={COUNTS} prId="pr1" trigger="hover" />);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(screen.getByLabelText("1 critical finding")).toHaveTextContent("1");
@@ -213,7 +236,7 @@ describe("FindingsSeverityCounts — hover trigger (PR list)", () => {
     hoverCell();
     expect(usePrReviews).toHaveBeenCalledWith("pr1");
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText("3 findings · latest review")).toBeInTheDocument();
+    expect(within(dialog).getByText("3 findings · latest run per agent")).toBeInTheDocument();
     const titles = within(dialog)
       .getAllByRole("listitem")
       .map((li) => li.textContent ?? "");

@@ -65,6 +65,9 @@ const SetSkillsBody = z
   })
   .refine((b) => b.skill_ids !== undefined || b.skill_id !== undefined, {
     message: 'Provide skill_ids (set/reorder) or skill_id (link one)',
+  })
+  .refine((b) => b.skill_ids === undefined || new Set(b.skill_ids).size === b.skill_ids.length, {
+    message: 'skill_ids must not contain duplicates',
   });
 
 export default async function agentsRoutes(appBase: FastifyInstance) {

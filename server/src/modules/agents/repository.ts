@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
@@ -199,6 +199,33 @@ export class AgentsRepository {
     return rows.map((r) => ({ skill: r.skill, order: r.order }));
   }
 
+  /** Linked skills that are globally enabled, in `order` — what a review run injects. */
+  async listEnabledSkillsForAgent(agentId: string): Promise<LinkedSkillRow[]> {
+    const links = await this.linkedSkills(agentId);
+    return links.filter((l) => l.skill.enabled);
+  }
+
+  /** Number of linked skills per agent of the workspace (agents with none are absent). */
+  async countSkillsByAgent(workspaceId: string): Promise<Map<string, number>> {
+    const rows = await this.db
+      .select({ agentId: t.agentSkills.agentId, n: count() })
+      .from(t.agentSkills)
+      .innerJoin(t.agents, eq(t.agentSkills.agentId, t.agents.id))
+      .where(eq(t.agents.workspaceId, workspaceId))
+      .groupBy(t.agentSkills.agentId);
+    return new Map(rows.map((r) => [r.agentId, r.n]));
+  }
+
+  /** How many of `skillIds` are skills of this workspace (guards cross-tenant links). */
+  async countSkillsInWorkspace(workspaceId: string, skillIds: string[]): Promise<number> {
+    if (skillIds.length === 0) return 0;
+    const [row] = await this.db
+      .select({ n: count() })
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), inArray(t.skills.id, skillIds)));
+    return row?.n ?? 0;
+  }
+
   async skillIdsForAgent(agentId: string): Promise<string[]> {
     const links = await this.linkedSkills(agentId);
     return links.map((l) => l.skill.id);
@@ -227,10 +254,13 @@ export class AgentsRepository {
    * the list are unlinked.
    */
   async setSkills(agentId: string, skillIds: string[]): Promise<void> {
-    await this.db.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
-    if (skillIds.length === 0) return;
-    await this.db
-      .insert(t.agentSkills)
-      .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
+    // One transaction: a failed insert must not leave the agent with no skills.
+    await this.db.transaction(async (tx) => {
+      await tx.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
+      if (skillIds.length === 0) return;
+      await tx
+        .insert(t.agentSkills)
+        .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
+    });
   }
 }

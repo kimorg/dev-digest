@@ -36,6 +36,28 @@ export const ToolCall = z.object({
 });
 export type ToolCall = z.infer<typeof ToolCall>;
 
+/** Token weight of each prompt slot; null = slot absent from this run's prompt. */
+export const PromptTokens = z.object({
+  system: z.number().int().nullable(),
+  skills: z.number().int().nullable(),
+  memory: z.number().int().nullable(),
+  specs: z.number().int().nullable(),
+  callers: z.number().int().nullable(),
+  repo_map: z.number().int().nullable(),
+  pr_description: z.number().int().nullable(),
+  user: z.number().int().nullable(),
+});
+export type PromptTokens = z.infer<typeof PromptTokens>;
+
+/** One skill injected into the prompt, in prompt order (L02). */
+export const SkillRef = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.number().int(),
+  tokens: z.number().int(),
+});
+export type SkillRef = z.infer<typeof SkillRef>;
+
 export const PromptAssembly = z.object({
   system: z.string(),
   skills: z.string().nullish(),
@@ -49,6 +71,10 @@ export const PromptAssembly = z.object({
   /** PR author's description/body (truncated); null when absent. */
   pr_description: z.string().nullish(),
   user: z.string(),
+  /** Per-slot token counts, filled by the server after the run. Old traces lack it. */
+  tokens: PromptTokens.nullish(),
+  /** Skills injected into the `skills` slot, in order. Old traces lack it. */
+  skill_refs: z.array(SkillRef).nullish(),
 });
 export type PromptAssembly = z.infer<typeof PromptAssembly>;
 

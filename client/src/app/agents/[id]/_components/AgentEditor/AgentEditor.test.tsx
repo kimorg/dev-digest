@@ -40,6 +40,12 @@ function renderWithIntl(ui: React.ReactElement) {
 }
 
 describe("A2 Agent Editor (smoke)", () => {
+  it("has exactly two tabs: Config and Skills", () => {
+    renderWithIntl(<AgentEditor agent={AGENT} tab="config" onTab={() => {}} />);
+    const tabs = screen.getAllByRole("button").filter((b) => ["Config", "Skills"].includes(b.textContent ?? ""));
+    expect(tabs.map((b) => b.textContent)).toEqual(["Config", "Skills"]);
+  });
+
   it("renders the Config tab fields", () => {
     renderWithIntl(<AgentEditor agent={AGENT} tab="config" onTab={() => {}} />);
     expect(screen.getByText("Config")).toBeInTheDocument();

@@ -39,3 +39,9 @@ export class ConfigError extends AppError {
     super('config_error', message, 500, details);
   }
 }
+
+export class ConflictError extends AppError {
+  constructor(message = 'Conflict', code = 'conflict', details?: unknown) {
+    super(code, message, 409, details);
+  }
+}

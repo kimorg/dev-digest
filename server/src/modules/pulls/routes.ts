@@ -122,15 +122,29 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     // grouping is cheap.
     const prIds = rows.map((r) => r.id);
     const latestReviewByPr = new Map<string, { id: string; score: number | null }>();
+    // FINDINGS source: each agent's latest review per PR (reviews without an
+    // agent form one group). review id → PR id.
+    const prByAgentLatestReview = new Map<string, string>();
     if (prIds.length > 0) {
       const reviewRows = await container.db
-        .select({ id: t.reviews.id, prId: t.reviews.prId, score: t.reviews.score })
+        .select({
+          id: t.reviews.id,
+          prId: t.reviews.prId,
+          agentId: t.reviews.agentId,
+          score: t.reviews.score,
+        })
         .from(t.reviews)
         .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
         .orderBy(desc(t.reviews.createdAt));
-      // Rows are newest-first → first seen per PR is the latest review.
+      // Rows are newest-first → first seen per PR (per PR + agent) is the latest review.
+      const seenAgents = new Set<string>();
       for (const rv of reviewRows) {
         if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { id: rv.id, score: rv.score });
+        const agentKey = `${rv.prId}:${rv.agentId ?? ''}`;
+        if (!seenAgents.has(agentKey)) {
+          seenAgents.add(agentKey);
+          prByAgentLatestReview.set(rv.id, rv.prId);
+        }
       }
     }
 
@@ -151,14 +165,13 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // FINDINGS column: per-severity counts of each PR's LATEST review only (the
-    // same review as SCORE; dismissed findings included). A latest review with
-    // no findings gives zeros; PRs never reviewed stay null.
+    // FINDINGS column: per-severity counts summed over the LATEST review of each
+    // agent (an agent's re-run replaces its earlier findings; a failed run makes
+    // no review, so its previous one still counts). Dismissed findings included.
+    // Reviews with no findings give zeros; PRs never reviewed stay null.
     const countsByPr = new Map<string, FindingsCounts>();
-    if (latestReviewByPr.size > 0) {
-      const prByReview = new Map<string, string>();
-      for (const [prId, review] of latestReviewByPr) {
-        prByReview.set(review.id, prId);
+    if (prByAgentLatestReview.size > 0) {
+      for (const prId of prByAgentLatestReview.values()) {
         countsByPr.set(prId, { critical: 0, warning: 0, suggestion: 0 });
       }
       const countRows = await container.db
@@ -168,10 +181,10 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           n: sql<number>`count(*)::int`,
         })
         .from(t.findings)
-        .where(inArray(t.findings.reviewId, [...prByReview.keys()]))
+        .where(inArray(t.findings.reviewId, [...prByAgentLatestReview.keys()]))
         .groupBy(t.findings.reviewId, t.findings.severity);
       for (const c of countRows) {
-        const counts = countsByPr.get(prByReview.get(c.reviewId)!)!;
+        const counts = countsByPr.get(prByAgentLatestReview.get(c.reviewId)!)!;
         const key = c.severity.toLowerCase();
         if (key === 'critical' || key === 'warning' || key === 'suggestion') {
           counts[key] += Number(c.n);

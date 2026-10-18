@@ -20,7 +20,7 @@ import {
 import type { FindingRecord, Severity } from "@devdigest/shared";
 import { usePrReviews } from "@/lib/hooks/reviews";
 import { findingBlobUrl } from "@/lib/github-urls";
-import { lineLabel, pickFindings, plainText, placeUnder, type Placement } from "./helpers";
+import { latestReviewPerAgent, lineLabel, pickFindings, plainText, placeUnder, type Placement } from "./helpers";
 import { s } from "./FindingsPopover.styles";
 
 
@@ -75,7 +75,7 @@ function FindingList({
 }
 
 /** PR-list source: fetch the PR's reviews only once the popover is open, and
-    show the LATEST review only — the same review the list's counts come from. */
+    show the LATEST review of each agent — the same reviews the list's counts come from. */
 function PrFindingList({
   prId,
   severity,
@@ -99,8 +99,8 @@ function PrFindingList({
   }
   if (reviews.isError) return <div style={s.note}>{t("findingsSeverity.error")}</div>;
   // Reviews come newest-first (GET /pulls/:id/reviews orders by created_at desc).
-  const latest = (reviews.data ?? []).find((r) => r.kind === "review");
-  const findings = pickFindings(latest?.findings ?? [], severity);
+  const latest = latestReviewPerAgent(reviews.data ?? []);
+  const findings = pickFindings(latest.flatMap((r) => r.findings), severity);
   return <FindingList findings={findings} repoFullName={repoFullName} headSha={headSha} />;
 }
 

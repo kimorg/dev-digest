@@ -1,0 +1,14 @@
+{
+  "name": "Skills page lists the seeded skills and opens one with its rendered preview",
+  "description": "Loads /skills (GET /skills), opens a seeded skill at /skills/:id (GET /skills/:id) and switches to its Preview tab, which renders the markdown body.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/skills"], "label": "load the skills page" },
+    { "cmd": ["wait", "--url", "/skills"], "label": "skills route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "skills fetch settles" },
+    { "cmd": ["wait", "--text", "Uncovered Branches"], "label": "seeded skill card is visible" },
+    { "cmd": ["find", "text", "Uncovered Branches", "click"], "label": "open the seeded skill" },
+    { "cmd": ["wait", "--url", "/skills/"], "label": "skill detail route reached" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Preview"], "label": "switch to the preview tab" },
+    { "cmd": ["wait", "--text", "Rendered as the reviewing agent receives it."], "label": "rendered preview is visible" }
+  ]
+}

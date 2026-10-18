@@ -5,7 +5,7 @@
      the Agent-runs timeline (one run, findings already in memory).
    - "hover": hovering (or focusing) the whole cell opens one popover with all
      findings, ordered by severity. Used by the PR list FINDINGS column (the
-     PR's latest review, fetched lazily by prId). */
+     latest review of each agent, fetched lazily by prId). */
 "use client";
 
 import React from "react";
@@ -30,7 +30,7 @@ export function FindingsSeverityCounts({
   trigger = "click",
 }: {
   counts: FindingsCounts | null | undefined;
-  /** This scope's findings (timeline run). When absent, the popover fetches `prId`'s latest review. */
+  /** This scope's findings (timeline run). When absent, the popover fetches `prId`'s latest review per agent. */
   findings?: FindingRecord[];
   prId?: string | null;
   repoFullName?: string | null;

@@ -22,7 +22,17 @@ const miniBtnStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-export function PromptBlock({ label, text, color }: { label: string; text: string; color: string }) {
+export interface PromptBlockProps {
+  label: string;
+  text: string;
+  color: string;
+  /** Token weight of this block; null/undefined (absent slot, pre-L02 trace) → not shown. */
+  tokens?: number | null;
+  /** Extra content shown above the text when expanded (e.g. the skills used). */
+  details?: React.ReactNode;
+}
+
+export function PromptBlock({ label, text, color, tokens, details }: PromptBlockProps) {
   const t = useTranslations("runs");
   const [open, setOpen] = React.useState(false);
   const [full, setFull] = React.useState(false);
@@ -33,6 +43,11 @@ export function PromptBlock({ label, text, color }: { label: string; text: strin
       <div onClick={() => setOpen((o) => !o)} style={s.promptHead}>
         <span style={s.promptDot(color)} />
         <span style={s.promptLabel}>{label}</span>
+        {tokens != null && (
+          <span className="mono" style={s.promptTokens} data-testid="prompt-block-tokens">
+            {t("trace.prompt.tokens", { count: tokens })}
+          </span>
+        )}
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
           <button
             type="button"
@@ -68,6 +83,7 @@ export function PromptBlock({ label, text, color }: { label: string; text: strin
           </button>
         </span>
       </div>
+      {open && details}
       {open && (
         <pre className="mono" style={s.promptPre}>
           {text || "—"}

@@ -17,5 +17,7 @@ export const routes = {
     withSearch(`/repos/${repoId}/pulls/${number}`, search),
   agents: () => "/agents",
   agent: (id: string, search?: Search) => withSearch(`/agents/${id}`, search),
+  skills: () => "/skills",
+  skill: (id: string, search?: Search) => withSearch(`/skills/${id}`, search),
   settings: (section = "api-keys") => `/settings/${section}`,
 };

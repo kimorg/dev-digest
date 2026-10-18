@@ -8,6 +8,7 @@ import type {
   Provider,
   ReviewStrategy,
 } from '@devdigest/shared';
+import { NotFoundError } from '../../platform/errors.js';
 import { AgentsRepository } from './repository.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
 
@@ -56,13 +57,18 @@ export class AgentsService {
   }
 
   async list(workspaceId: string): Promise<Agent[]> {
-    const rows = await this.repo.list(workspaceId);
-    return rows.map(toAgentDto);
+    const [rows, counts] = await Promise.all([
+      this.repo.list(workspaceId),
+      this.repo.countSkillsByAgent(workspaceId),
+    ]);
+    return rows.map((r) => toAgentDto(r, counts.get(r.id) ?? 0));
   }
 
   async get(workspaceId: string, id: string): Promise<Agent | undefined> {
     const row = await this.repo.getById(workspaceId, id);
-    return row ? toAgentDto(row) : undefined;
+    if (!row) return undefined;
+    const links = await this.repo.linkedSkills(id);
+    return toAgentDto(row, links.length);
   }
 
   /** Delete an agent (and its versions/skill-links, via cascade). */
@@ -85,7 +91,7 @@ export class AgentsService {
       enabled: input.enabled,
       createdBy: userId ?? null,
     });
-    return toAgentDto(row);
+    return toAgentDto(row, 0);
   }
 
   async update(
@@ -105,7 +111,9 @@ export class AgentsService {
       ...(patch.repo_intel !== undefined ? { repoIntel: patch.repo_intel } : {}),
       ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
     });
-    return row ? toAgentDto(row) : undefined;
+    if (!row) return undefined;
+    const links = await this.repo.linkedSkills(id);
+    return toAgentDto(row, links.length);
   }
 
   /**
@@ -152,6 +160,7 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
+    await this.assertSkillsInWorkspace(workspaceId, skillIds);
     await this.repo.setSkills(agentId, skillIds);
     return this.skillLinks(agentId);
   }
@@ -165,10 +174,17 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
+    await this.assertSkillsInWorkspace(workspaceId, [skillId]);
     const existing = await this.repo.linkedSkills(agentId);
     const resolvedOrder = order ?? existing.length;
     await this.repo.linkSkill(agentId, skillId, resolvedOrder);
     return this.skillLinks(agentId);
+  }
+
+  /** Every id must be a skill of this workspace — linking another tenant's skill is a 404. */
+  private async assertSkillsInWorkspace(workspaceId: string, skillIds: string[]): Promise<void> {
+    const found = await this.repo.countSkillsInWorkspace(workspaceId, skillIds);
+    if (found !== skillIds.length) throw new NotFoundError('Skill not found');
   }
 
   /**

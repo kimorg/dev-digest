@@ -18,6 +18,13 @@ export const queryKeys = {
 
   agents: () => ["agents"] as const,
   agent: (id: string | null | undefined) => ["agent", id] as const,
+  /** No agent → every agent's skill links (for invalidation). */
+  agentSkills: (agentId?: string | null) =>
+    agentId === undefined ? (["agent-skills"] as const) : (["agent-skills", agentId] as const),
+
+  skills: () => ["skills"] as const,
+  skill: (id: string | null | undefined) => ["skill", id] as const,
+  skillVersions: (id: string | null | undefined) => ["skill-versions", id] as const,
 
   prActiveRuns: (prId: string | null | undefined) => ["pr-active-runs", prId] as const,
   prRuns: (prId: string | null | undefined) => ["pr-runs", prId] as const,

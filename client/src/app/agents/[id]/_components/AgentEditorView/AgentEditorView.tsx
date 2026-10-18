@@ -90,6 +90,7 @@ export function AgentEditorView() {
                 active={a.id === id}
                 onClick={() => router.push(routes.agent(a.id, { tab }))}
                 onToggle={(enabled) => update.mutate({ id: a.id, patch: { enabled } })}
+                onDeleted={a.id === id ? () => router.replace(routes.agents()) : undefined}
               />
             ))}
           </div>

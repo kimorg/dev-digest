@@ -29,7 +29,7 @@
     },
     "countAria": "{count, plural, one {# {severity} finding} other {# {severity} findings}}",
     "popoverTitle": "{count} {severity}",
-    "popoverTitleAll": "{count, plural, one {# finding} other {# findings}} · latest review",
+    "popoverTitleAll": "{count, plural, one {# finding} other {# findings}} · latest run per agent",
     "empty": "No findings",
     "error": "Couldn't load findings"
   },
@@ -44,5 +44,8 @@
   },
   "toast": {
     "dismiss": "Dismiss"
+  },
+  "confirmDialog": {
+    "delete": "Delete"
   }
 }

@@ -78,6 +78,13 @@
       "when": 1791561825228,
       "tag": "0010_clever_blonde_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792257496652,
+      "tag": "0011_skills_crud",
+      "breakpoints": true
     }
   ]
 }

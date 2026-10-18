@@ -67,6 +67,9 @@ export const s = {
   textBtn: { background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer" } satisfies CSSProperties,
   promptDot: (color: string): CSSProperties => ({ width: 7, height: 7, borderRadius: 2, background: color }),
   promptLabel: { fontSize: 13, fontWeight: 600 } satisfies CSSProperties,
+  promptTokens: { fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
+  skillRefs: { listStyle: "none", margin: 0, padding: "4px 12px 8px 29px", fontSize: 12 } satisfies CSSProperties,
+  skillRef: { display: "flex", gap: 10, padding: "2px 0", color: "var(--text-secondary)" } satisfies CSSProperties,
   promptToggle: { marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
   promptPre: {
     margin: 0,

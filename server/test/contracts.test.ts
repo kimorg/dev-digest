@@ -16,6 +16,11 @@ import {
   Repo,
   PrDetail,
   PrMeta,
+  PromptAssembly,
+  CreateSkillRequest,
+  UpdateSkillRequest,
+  SkillImportDraft,
+  Agent,
 } from '@devdigest/shared';
 
 /**
@@ -201,6 +206,70 @@ describe('AI contracts parse fixtures', () => {
     const stats = { duration_ms: 1, tokens_in: 1, tokens_out: 1, findings: 0, grounding: '0/0 passed' };
     expect(RunTrace.parse({ ...base, stats: { ...stats, cost_usd: 0.0013 } }).stats.cost_usd).toBe(0.0013);
     expect(RunTrace.parse({ ...base, stats }).stats.cost_usd).toBeUndefined();
+  });
+
+  it('PromptAssembly tokens / skill_refs: parsed when present, optional for pre-L02 traces', () => {
+    const tokens = {
+      system: 120,
+      skills: 40,
+      memory: null,
+      specs: null,
+      callers: null,
+      repo_map: null,
+      pr_description: null,
+      user: 300,
+    };
+    const skill_refs = [{ id: 's1', name: 'Uncovered Branches', version: 3, tokens: 40 }];
+    const parsed = PromptAssembly.parse({ system: 's', user: 'u', tokens, skill_refs });
+    expect(parsed.tokens).toEqual(tokens);
+    expect(parsed.skill_refs).toEqual(skill_refs);
+    const old = PromptAssembly.parse({ system: 's', user: 'u' });
+    expect(old.tokens).toBeUndefined();
+    expect(old.skill_refs).toBeUndefined();
+  });
+});
+
+describe('skills contracts (L02)', () => {
+  const create = { name: '  Edge Cases ', description: 'Check boundaries.', type: 'rubric', body: '# x' };
+
+  it('CreateSkillRequest trims the name and requires a description and body', () => {
+    expect(CreateSkillRequest.parse(create).name).toBe('Edge Cases');
+    expect(CreateSkillRequest.safeParse({ ...create, description: ' ' }).success).toBe(false);
+    expect(CreateSkillRequest.safeParse({ ...create, body: '' }).success).toBe(false);
+    expect(CreateSkillRequest.safeParse({ ...create, name: 'x'.repeat(81) }).success).toBe(false);
+    expect(CreateSkillRequest.safeParse({ ...create, source: 'community' }).success).toBe(false);
+  });
+
+  it('UpdateSkillRequest is partial but not empty', () => {
+    expect(UpdateSkillRequest.parse({ enabled: false })).toEqual({ enabled: false });
+    expect(UpdateSkillRequest.safeParse({}).success).toBe(false);
+  });
+
+  it('SkillImportDraft carries ignored files and warnings', () => {
+    const draft = SkillImportDraft.parse({
+      name: 'n',
+      description: '',
+      type: 'custom',
+      body: 'b',
+      ignored_files: ['scripts/run.sh'],
+      warnings: ['No description — write one before saving.'],
+    });
+    expect(draft.ignored_files).toEqual(['scripts/run.sh']);
+  });
+
+  it('Agent.skill_count is optional', () => {
+    const agent = {
+      id: 'a',
+      name: 'n',
+      description: '',
+      provider: 'openai',
+      model: 'm',
+      system_prompt: 'p',
+      enabled: true,
+      version: 1,
+    };
+    expect(Agent.parse(agent).skill_count).toBeUndefined();
+    expect(Agent.parse({ ...agent, skill_count: 3 }).skill_count).toBe(3);
   });
 });
 

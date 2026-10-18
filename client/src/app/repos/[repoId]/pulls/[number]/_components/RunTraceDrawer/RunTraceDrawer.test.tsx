@@ -8,7 +8,14 @@ import messages from "../../../../../../../../messages/en/runs.json"; // apps/we
 const TRACE: RunTrace = {
   config: { agent: "Security", version: "1", provider: "openai", model: "gpt-4.1", pr: 482, source: "local" },
   stats: { duration_ms: 8200, tokens_in: 12000, tokens_out: 1500, cost_usd: 0.06, findings: 2, grounding: "2/2 passed" },
-  prompt_assembly: { system: "You are a reviewer.", skills: "### skill", memory: null, specs: null, user: "Review PR #482" },
+  prompt_assembly: {
+    system: "You are a reviewer.",
+    skills: '<skill name="Over-Mocking" version="1">\nDescription: Flag over-mocked tests.\n\n# Over-Mocking\n</skill>',
+    memory: null,
+    specs: null,
+    user: "Review PR #482",
+    tokens: { system: 5, skills: 12, memory: null, specs: null, callers: null, repo_map: null, pr_description: null, user: 4 },
+  },
   tool_calls: [{ tool: "review_file", args: "src/config.ts", meta: "single-pass", ms: 1200 }],
   raw_output: '{"verdict":"request_changes"}',
   memory_pulled: [{ pr: 471, text: "rate-limit public endpoints" }],
@@ -54,5 +61,20 @@ describe("A5 Run Trace drawer (smoke)", () => {
     fireEvent.click(screen.getByText("log"));
     // LiveLogStream renders its filter input
     expect(screen.getByPlaceholderText("Filter log…")).toBeInTheDocument();
+  });
+});
+
+describe("Prompt assembly", () => {
+  it("shows a token count only on the skills block and hides the skill name/description lines", () => {
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} onClose={() => {}} />);
+    fireEvent.click(screen.getByText("Prompt assembly"));
+    const tokens = screen.getAllByTestId("prompt-block-tokens");
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0]).toHaveTextContent("~12 tok");
+
+    fireEvent.click(screen.getByText("Skills (dynamic)"));
+    expect(screen.getByText("# Over-Mocking")).toBeInTheDocument();
+    expect(screen.queryByText(/Description: Flag over-mocked tests/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/<skill name=/)).not.toBeInTheDocument();
   });
 });

@@ -121,6 +121,67 @@ error as blocking only when `data == null`, and retry whichever query is actuall
 **Evidence:** `client/src/lib/hooks/pulls.ts:50`, `client/src/lib/hooks/pulls.test.tsx` ·
 **Apply when:** a composed hook or view merges `isError` from a query that has `refetchInterval` / `refetchOnWindowFocus`.
 
+### 2026-10-17 — "latest run per agent" = latest `reviews` row per `(pr_id, agent_id)`; the rule is duplicated in the client
+See `server/INSIGHTS.md` → "\"latest run per agent\" = latest `reviews` row per `(pr_id, agent_id)`; the rule is duplicated in the client".
+
+### 2026-10-17 — `messages/en/skills.json` is pre-written for an obsolete Skills design and nothing reads it
+**Context:** writing the L02 Skills spec against the brief and screenshots. · **Insight:** no
+component calls `useTranslations("skills")`. The file describes an "Add a skill" **drawer** with
+file / URL / community tabs, and its copy makes promises the server does not keep ("Pasted content is
+wrapped as untrusted data", "Fetched server-side"). Skills are injected as trusted instructions, not
+wrapped. `agents.json` already has the `editor.tabs.skills` and `skills.*` keys for the agent tab. Treat
+both as drafts: rewrite the Skills copy for the spec'd design instead of wiring the existing keys
+as they are. · **Evidence:** `client/messages/en/skills.json:33`, `client/messages/en/skills.json:48`,
+`client/messages/en/agents.json:92`, `client/specs/003-skills.md` · **Apply when:** building any Skills UI.
+
+### 2026-10-17 — skills scaffolding is half-wired: links persist, but no run ever loads them
+See `server/INSIGHTS.md` → "skills scaffolding is half-wired: links persist, but no run ever loads them".
+
+### 2026-10-17 — the `Markdown` primitive rendered unstyled: headings and lists came out as plain paragraphs
+**Context:** checking the skill Preview tab (requirement: formatted, not raw) in headless Chrome. ·
+**Insight:** `Markdown` only overrides `p` / `strong` / `code` / `a` inline, and the base CSS reset
+strips list markers and heading sizes. Until `.dd-md` rules existed, `# Title` and `- item`
+rendered as same-size text with no bullets, which looked like "not rendered". A `.dd-md` stylesheet
+block now restores h1–h4, ul/ol, blockquote, pre, table and hr for every `Markdown` use. ·
+**Evidence:** `client/src/vendor/ui/styles.css:295`, `client/src/vendor/ui/primitives/Markdown.tsx:9` ·
+**Apply when:** rendering block markdown anywhere (skill bodies, docs), or restyling the reset.
+
+### 2026-10-17 — every mutation error already shows a global toast; add inline errors only for form fields
+**Context:** wiring skill create/import/link mutations. · **Insight:** `MutationCache.onError`
+in `providers.tsx` toasts *every* failed mutation. A per-mutation `onError: toast.error(…)` shows
+the message twice. Leave failures to the global toast, and render only field-level problems inline
+(409 name taken, import parse error). Optimistic mutations still need their own `onError`, but only
+for the rollback. · **Evidence:** `client/src/lib/providers.tsx:41`,
+`client/src/lib/hooks/agents.ts` (`useSetAgentSkills`) · **Apply when:** adding a mutation or form.
+
+### 2026-10-17 — the kit `Modal` is not portalled: inside a disabled card it inherits the card's opacity
+**Context:** replacing `window.confirm` in `AgentCard` with a dialog. · **Insight:** `Modal` is a
+`position: fixed` child rendered in place, so any ancestor `opacity` (disabled cards use 0.6) or
+`transform` applies to it. `ConfirmDialog` therefore `createPortal`s to `<body>`. React synthetic
+events still bubble through a portal to the React parent, so an owner that sits inside a clickable
+card must keep a `stopPropagation` wrapper around the dialog, or confirming also opens the card. ·
+**Evidence:** `client/src/components/confirm-dialog/ConfirmDialog.tsx:45`,
+`client/src/app/agents/_components/AgentCard/styles.ts:11` · **Apply when:** opening a Modal
+from inside a card, row or anything with opacity/transform.
+
+### 2026-10-17 — `messages/en/skills.json` was rewritten and is now read
+**Context:** implementing `client/specs/003-skills.md`. · **Insight:** Supersedes:
+"`messages/en/skills.json` is pre-written for an obsolete Skills design and nothing reads it". The
+file now matches the shipped design (Create / From file modal, Config / Preview / Versions) and is
+the `skills` namespace of `src/app/skills/**` and of the agent Skills tab (type labels). ·
+**Evidence:** `client/messages/en/skills.json` · **Apply when:** adding Skills UI copy.
+
+### 2026-10-18 — the trace Skills block hides the `<skill>`/`Description:` wrapper with a regex tied to the server format
+**Context:** removing the skill name/description lines from Prompt assembly → Skills (dynamic). ·
+**Insight:** `prompt_assembly.skills` is the exact text the LLM got. The wrapper is hidden only
+on the client (`stripSkillHeaders`), and the text it strips is also what copy and fullscreen use.
+The regex matches the line format of server `renderSkillBlock`. If that format changes, the strip
+quietly stops matching and the wrapper lines show again. No test catches it, because the client
+test builds its own fixture. The header token count (`tokens.skills`) still counts the wrapper. ·
+**Evidence:** `client/src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/helpers.ts:22`,
+`server/src/modules/reviews/helpers.ts:102` · **Apply when:** changing `renderSkillBlock` or the
+trace Skills block.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -155,6 +216,28 @@ against the **buggy** code too. Fix: return the underlying query from the same t
 **Evidence:** `client/src/lib/hooks/pulls.test.tsx:20`, `client/src/lib/hooks/pulls.test.tsx:45` ·
 **Apply when:** testing hook state that follows a manual `refetchQueries` / `invalidateQueries`.
 
+### 2026-10-17 — dnd-kit drag & drop can't run in jsdom; verify it with CDP key events in real Chrome
+**Context:** testing the agent Skills tab reorder. · **Insight:** dnd-kit measures rows with
+`getBoundingClientRect`, which is all zeros in jsdom, so a keyboard or pointer drag in vitest moves
+nothing. Unit-test the pure reorder helper (`moveLink`) and the rendered state (grip only on linked
+rows, disabled while filtering) instead. For the real check: run headless Chrome with
+`--remote-debugging-port`, focus the grip button, and send `Input.dispatchKeyEvent` for
+Space → ArrowDown → Space with `windowsVirtualKeyCode` 32/40/32. The rows swap and
+`POST /agents/:id/skills` fires. Restore the order afterwards, because it writes to the dev DB. ·
+**Evidence:** `client/src/app/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:46`,
+`…/SkillsTab/helpers.test.ts` · **Apply when:** changing any dnd-kit list.
+
+### 2026-10-18 — native `<select>` popups follow `color-scheme`, not the theme tokens
+**Context:** the `SelectInput` dropdown opened white in dark theme. · **Insight:** the browser
+draws the open option list as a native popup. CSS variables on `[data-theme]` don't reach it, and
+`SelectInput`'s `<select>` is `background: transparent`, so options had no dark surface and inherited
+the light `--text-primary` text (light grey on white). The fix is global in `styles.css`:
+`color-scheme: dark|light` in each theme block, plus an `option { background; color }` rule. Checked in
+headless Chrome via CDP `getComputedStyle`. Note that a screenshot can't capture the open native popup. ·
+**Evidence:** `client/src/vendor/ui/styles.css:12`, `client/src/vendor/ui/styles.css:203`,
+`client/src/vendor/ui/kit/SelectInput.tsx:36` · **Apply when:** any native control (select, date
+picker, scrollbar) looks light in dark theme, or when adding a new theme.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -167,6 +250,14 @@ shorthand/longhand warning whenever `focused` toggles (j/k navigation too). The 
 in the browser console, not in vitest. · **Evidence:**
 `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingCard/styles.ts:11` ·
 **Apply when:** a style object mixes `border*Color`/`border*Width` with a per-side variant whose value changes between renders.
+
+### 2026-10-17 — after adding a route, `tsc` fails: "Type '"/skills"' does not satisfy the constraint 'AppRoutes'"
+**Context:** adding `src/app/skills/page.tsx` and `src/app/skills/[id]/page.tsx`. · **Insight:**
+`tsconfig` includes Next's generated `.next/types/**`. `validator.ts` lists every route page, but
+the `AppRoutes` union is stale until Next regenerates it, so `pnpm typecheck` fails with
+`error TS2344` until then. Run `pnpm exec next typegen` (no dev server or build needed), then
+typecheck again. · **Evidence:** `client/.next/types/validator.ts` · **Apply when:** adding,
+renaming or deleting a `page.tsx`.
 
 ## Session Notes
 
@@ -181,6 +272,12 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-14 — frontend architecture refactor (phases 0–6): "unused" hooks/components are lesson scaffolding — don't delete them as dead code, the API answers a malformed id with 422, not 404 — both mean "not found" on a GET-by-id, run-header verdict labels are a separate lowercase key set on purpose (e2e waits on them), in a PR-list row only the title is a `<Link>`, not the whole row, clicking a Next `<Link>` in vitest logs "Error: Not implemented: navigation"
 
 - 2026-10-15 — review of the frontend refactor (fix usePrByNumber, test i18n): a polled query's `isError` turns true while its data is still cached — don't let it blank a screen, `renderHook`: after `act(() => qc.refetchQueries(…))` `result.current` can still be stale — the assertion passes vacuously
+
+- 2026-10-17 — PR-list FINDINGS per agent: "latest run per agent" = latest `reviews` row per `(pr_id, agent_id)`; the rule is duplicated in the client (pointer)
+- 2026-10-17 — L02 Skills spec: `messages/en/skills.json` is pre-written for an obsolete Skills design and nothing reads it, skills scaffolding is half-wired (pointer)
+- 2026-10-17 — L02 Skills client implementation: the `Markdown` primitive rendered unstyled: headings and lists came out as plain paragraphs, every mutation error already shows a global toast; add inline errors only for form fields, the kit `Modal` is not portalled: inside a disabled card it inherits the card's opacity, `messages/en/skills.json` was rewritten and is now read, dnd-kit drag & drop can't run in jsdom; verify it with CDP key events in real Chrome, after adding a route, `tsc` fails: "Type '"/skills"' does not satisfy the constraint 'AppRoutes'"
+- 2026-10-18 — trace Prompt assembly: tokens only on Skills, hide skill wrapper: the trace Skills block hides the `<skill>`/`Description:` wrapper with a regex tied to the server format
+- 2026-10-18 — dark select dropdown: native `<select>` popups follow `color-scheme`, not the theme tokens
 
 ## Open Questions
 
