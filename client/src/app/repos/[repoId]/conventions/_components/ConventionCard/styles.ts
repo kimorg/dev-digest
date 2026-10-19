@@ -1,0 +1,46 @@
+import type { CSSProperties } from "react";
+
+export const s = {
+  card: (isAccepted: boolean): CSSProperties => ({
+    display: "flex",
+    gap: 20,
+    padding: "18px 22px",
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border)",
+    borderLeft: `3px solid ${isAccepted ? "var(--ok)" : "var(--border-strong)"}`,
+    borderRadius: 10,
+  }),
+  main: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12 } satisfies CSSProperties,
+  rule: { fontSize: 15, fontWeight: 600, fontStyle: "italic", lineHeight: 1.4 } satisfies CSSProperties,
+  evidence: {
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    background: "var(--code-bg)",
+    overflow: "hidden",
+  } satisfies CSSProperties,
+  evidenceHead: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "4px 6px 4px 14px",
+    borderBottom: "1px solid var(--border)",
+    fontSize: 12.5,
+    color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+  evidencePath: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } satisfies CSSProperties,
+  linkIcon: { display: "inline-block", marginLeft: 5, verticalAlign: "-1px" } satisfies CSSProperties,
+  snippet: {
+    margin: 0,
+    padding: "12px 16px",
+    fontSize: 12.5,
+    lineHeight: 1.6,
+    overflowX: "auto",
+    whiteSpace: "pre",
+  } satisfies CSSProperties,
+  confidenceRow: { display: "flex", alignItems: "center", gap: 12, fontSize: 12.5, color: "var(--text-muted)" } satisfies CSSProperties,
+  confidenceBar: { width: 140 } satisfies CSSProperties,
+  confidenceValue: { color: "var(--text-secondary)", fontWeight: 600 } satisfies CSSProperties,
+  actions: { width: 180, flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
+  editForm: { display: "flex", flexDirection: "column", gap: 10 } satisfies CSSProperties,
+  editRow: { display: "flex", gap: 8 } satisfies CSSProperties,
+} as const;

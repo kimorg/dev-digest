@@ -40,7 +40,8 @@ touch the pipeline internals:
 - `getCallerSignatures(repoId, files, limit)` → callers of changed symbols.
 - `getBlastRadius(repoId, files)` → impacted symbols / callers (used by L04).
 - `getUnresolvedReferences(repoId, …)` → phantom-symbol detection (used by L06).
-- `getConventionSamples(repoId)` → top-ranked files for convention extraction (L02).
+- `getConventionSamples(repoId, n)` → top-ranked files for convention extraction (L02; the
+  conventions module asks for 12 and adds the root lint/tsconfig/prettier configs itself).
 
 In the starter, only `getRepoMap` / `getFileRank` / `getCallerSignatures` are
 wired — into `modules/reviews/run-executor.ts`, which adds the repo map and a

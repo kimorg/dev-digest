@@ -1,0 +1,1 @@
+ALTER TABLE "convention_scans" ADD COLUMN "head_sha" text;

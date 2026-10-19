@@ -8,10 +8,10 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Button, Icon, Markdown } from "@devdigest/ui";
 import type { SkillImportDraft, SkillListItem } from "@devdigest/shared";
+import { isNameTakenError } from "@/lib/skill-form";
 import { useCreateSkill, useSkillImportPreview } from "@/lib/hooks/skills";
 import { SkillFields } from "../../../SkillFields";
 import {
-  isNameTakenError,
   isSkillFormComplete,
   toSkillForm,
   toSkillPayload,

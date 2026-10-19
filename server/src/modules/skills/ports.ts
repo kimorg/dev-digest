@@ -13,6 +13,8 @@ export interface NewSkill {
   source: SkillSource;
   body: string;
   enabled: boolean;
+  /** Files the skill was derived from (conventions extractor); null for hand-written skills. */
+  evidenceFiles: string[] | null;
 }
 
 export interface SkillPatch {

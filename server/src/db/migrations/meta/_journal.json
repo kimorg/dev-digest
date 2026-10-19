@@ -85,6 +85,27 @@
       "when": 1792257496652,
       "tag": "0011_skills_crud",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792339493305,
+      "tag": "0012_conventions_extractor",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792342776951,
+      "tag": "0013_drop_convention_category",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792343070568,
+      "tag": "0014_add_convention_scan_head_sha",
+      "breakpoints": true
     }
   ]
 }

@@ -5,11 +5,11 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@devdigest/ui";
 import type { SkillListItem } from "@devdigest/shared";
+import { isNameTakenError } from "@/lib/skill-form";
 import { useCreateSkill } from "@/lib/hooks/skills";
 import { SkillFields } from "../../../SkillFields";
 import {
   EMPTY_SKILL_FORM,
-  isNameTakenError,
   isSkillFormComplete,
   toSkillPayload,
   type SkillForm,

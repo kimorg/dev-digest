@@ -25,6 +25,15 @@ Entry format:
 
 _Approaches and solutions that worked and are worth repeating._
 
+### 2026-10-18 — a synchronous model call of ~70 s is fine end to end: no client or server request timeout
+**Context:** the conventions scan runs as one `POST /repos/:id/conventions/extract` request. ·
+**Insight:** a real scan (OpenRouter `qwen/qwen3.7-flash`, 12 samples) took about 73 s and returned 200.
+`apiFetch` sets no `AbortController` timeout and Fastify has no request timeout configured, so a
+synchronous route is viable for a single model call. Each call bounds itself with `timeoutMs` on
+`completeStructured`. Use a job only if the work must outlive the request or needs retries. ·
+**Evidence:** `client/src/lib/api.ts`, `server/src/modules/conventions/constants.ts`
+(`EXTRACTION_TIMEOUT_MS`) · **Apply when:** choosing between a sync route and a JobRunner job for one LLM call.
+
 ## What Doesn't Work
 
 _Dead ends and anti-patterns — what was tried and why it failed. The most skipped section, and the most valuable._
@@ -153,6 +162,28 @@ type. · **Evidence:** `server/src/modules/skills/ports.ts`, `server/src/modules
 `server/src/modules/reviews/helpers.ts:115` · **Apply when:** adding a module or a new service, or
 when depcruise reports `application-no-repository` / `application-no-container`.
 
+### 2026-10-18 — a module that needs another module's function gets it through a `types.ts` facade on the container
+**Context:** the conventions module needed the Settings → Models choice (`resolveFeatureModel`). ·
+**Insight:** importing `modules/settings/feature-models.ts` from `modules/conventions/wiring.ts` breaks
+`no-cross-module-internals`, even from wiring. Only another module's `types.ts` may be imported. The fix
+is a facade interface `FeatureModels` in `modules/settings/types.ts`. `container.featureModels` builds it,
+because the container is composition and may import module code. Wiring then calls
+`container.featureModels.resolve(ws, 'conventions')`. This is the same shape as `container.repoIntel`.
+`depcruise` reported no new violations. · **Evidence:** `server/src/modules/settings/types.ts`,
+`server/src/platform/container.ts:130`, `server/src/modules/conventions/wiring.ts` · **Apply when:** a new
+module needs a capability that lives in another module's non-`types.ts` file.
+
+### 2026-10-18 — `getConventionSamples` filters configs out; tests' `MockGitClient` returns `''`, not ENOENT
+**Context:** building the conventions sampler. · **Insight:** the documented "conventions sample" excludes
+lint and format configs. `JUNK_PATH_PATTERNS` drops `eslint`, `prettier`, `.config.` and others. So any
+feature that wants configs must read them by path. `MockGitClient.readFile` returns `''` for an unknown
+path instead of throwing, while the real adapter throws `ENOENT`. Code that reads optional files must
+treat an empty string as "missing", or tests will see phantom files. In this repo's own clone the root
+has no eslint/prettier/tsconfig (they live per package), so a real scan sent only the 12 ranked files. ·
+**Evidence:** `server/src/modules/repo-intel/service.ts:713`, `server/src/adapters/mocks.ts:293`,
+`server/src/modules/conventions/service.ts` (`collectSamples`) · **Apply when:** sampling repo files for a
+model, or testing code that reads optional files through the git port.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -203,6 +234,17 @@ claims, so re-check the inflated byte length too. A non-zip input throws, so cat
 422. · **Evidence:** `server/src/modules/skills/import.ts:66`, `server/src/modules/skills/import.ts:100`,
 `server/test/skills-import.test.ts` (zip-bomb case) · **Apply when:** reading any uploaded archive.
 
+### 2026-10-18 — `pnpm db:generate` hangs silently when a change drops a column and adds others in the same table
+**Context:** migration `0012_conventions_extractor` (dropped `conventions.accepted` and added `status` plus 6
+other columns). · **Insight:** drizzle-kit asks "created or renamed from another column?" once for every new
+column in that table. Without a TTY (agent shell) the command just sits there until it times out. Nothing
+is written. Run it under a pseudo-terminal and press Enter once per prompt. The first option is
+"create column".
+`(sleep 20; for i in $(seq 1 12); do printf '\r'; sleep 3; done) | script -qec "pnpm db:generate --name X" /dev/null`.
+Check the generated SQL afterwards for `ADD COLUMN` and no `RENAME`. · **Evidence:**
+`server/src/db/migrations/0012_conventions_extractor.sql` · **Apply when:** a schema change removes a column
+while adding columns to the same table (or renames one).
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -223,6 +265,7 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-17 — L02 Skills spec + Test Quality Reviewer seed: skills scaffolding is half-wired: links persist, but no run ever loads them, a seeded agent joins every "Run all" review and gets no `agent_versions` v1
 - 2026-10-17 — L02 Skills server implementation: a run is marked `done` before its trace is written: polling status then GET `/runs/:id/trace` can 404, skills are now wired into runs; the link guards are in place, fflate `unzipSync` with `filter: () => false` lists a zip without inflating anything
 - 2026-10-18 — fix depcruise CRITICALs in skills/reviews: a new module only passes the onion rules if its repository returns contract DTOs
+- 2026-10-18 — L02 Conventions Extractor: a synchronous model call of ~70 s is fine end to end: no client or server request timeout, a module that needs another module's function gets it through a `types.ts` facade on the container, `getConventionSamples` filters configs out; tests' `MockGitClient` returns `''`, not ENOENT, `pnpm db:generate` hangs silently when a change drops a column and adds others in the same table
 
 ## Open Questions
 

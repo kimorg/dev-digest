@@ -1,4 +1,3 @@
-import { ApiError } from "@/lib/api";
 import type { SkillImportDraft, SkillListItem, SkillType } from "@devdigest/shared";
 
 /** The editable part of a skill, as held by the create / import / config forms. */
@@ -28,9 +27,4 @@ export function isSkillFormComplete(form: SkillForm): boolean {
 /** Trim what the server trims, so "unchanged" and the saved values agree. */
 export function toSkillPayload(form: SkillForm): SkillForm {
   return { ...form, name: form.name.trim(), description: form.description.trim() };
-}
-
-/** The server answers 409 when another skill already uses the name (any case). */
-export function isNameTakenError(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 409;
 }

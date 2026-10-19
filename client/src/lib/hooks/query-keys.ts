@@ -26,6 +26,9 @@ export const queryKeys = {
   skill: (id: string | null | undefined) => ["skill", id] as const,
   skillVersions: (id: string | null | undefined) => ["skill-versions", id] as const,
 
+  repoConventions: (repoId: string | null | undefined) => ["repo-conventions", repoId] as const,
+  conventionSkillDraft: (repoId: string | null | undefined) => ["convention-skill-draft", repoId] as const,
+
   prActiveRuns: (prId: string | null | undefined) => ["pr-active-runs", prId] as const,
   prRuns: (prId: string | null | undefined) => ["pr-runs", prId] as const,
   prReviews: (prId: string | null | undefined) => ["pr-reviews", prId] as const,

@@ -29,7 +29,10 @@ export class SkillService {
     return this.repo.getSkill(workspaceId, id);
   }
 
-  /** Create a skill (v1). An imported skill starts disabled — it is someone else's instructions. */
+  /**
+   * Create a skill (v1). An imported skill starts disabled — it is someone else's
+   * instructions — unless the request sets `enabled` explicitly.
+   */
   async create(workspaceId: string, input: CreateSkillRequest): Promise<SkillListItem> {
     await this.assertNameFree(workspaceId, input.name);
     const source = input.source ?? 'manual';
@@ -41,7 +44,8 @@ export class SkillService {
         type: input.type,
         source,
         body: input.body,
-        enabled: source !== 'imported_file',
+        enabled: input.enabled ?? source !== 'imported_file',
+        evidenceFiles: input.evidence_files?.length ? input.evidence_files : null,
       }),
     );
   }

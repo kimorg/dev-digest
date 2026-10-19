@@ -10,8 +10,9 @@ import type { SkillListItem } from "@devdigest/shared";
 import { useUpdateSkill } from "@/lib/hooks/skills";
 import { useToast } from "@/lib/toast";
 import { SkillFields } from "../../../SkillFields";
-import { isNameTakenError, isSkillFormComplete, toSkillForm, type SkillForm } from "../../../SkillFields/helpers";
-import { changedFields, estimateTokens, toSkillFileName } from "./helpers";
+import { estimateTokens, isNameTakenError, toSkillFileName } from "@/lib/skill-form";
+import { isSkillFormComplete, toSkillForm, type SkillForm } from "../../../SkillFields/helpers";
+import { changedFields } from "./helpers";
 import { s } from "./styles";
 
 export interface ConfigTabProps {

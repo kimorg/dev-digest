@@ -164,13 +164,18 @@ export const SkillListItem = Skill.extend({
 });
 export type SkillListItem = z.infer<typeof SkillListItem>;
 
-/** POST /skills. An `imported_file` skill is saved disabled until the user vets it. */
+/**
+ * POST /skills. An `imported_file` skill is saved disabled until the user vets it;
+ * `enabled` overrides that default. `extracted` = built from accepted conventions.
+ */
 export const CreateSkillRequest = z.object({
   name: SkillName,
   description: SkillDescription,
   type: SkillType,
   body: SkillBody,
-  source: z.enum(['manual', 'imported_file']).optional(),
+  source: z.enum(['manual', 'imported_file', 'extracted']).optional(),
+  enabled: z.boolean().optional(),
+  evidence_files: z.array(z.string().max(500)).max(200).optional(),
 });
 export type CreateSkillRequest = z.infer<typeof CreateSkillRequest>;
 
@@ -216,15 +221,80 @@ export const SkillImportDraft = z.object({
 export type SkillImportDraft = z.infer<typeof SkillImportDraft>;
 
 // ---- Conventions ----
+export const ConventionStatus = z.enum(['pending', 'accepted', 'rejected']);
+export type ConventionStatus = z.infer<typeof ConventionStatus>;
+
+export const CONVENTION_RULE_MAX = 500;
+
+/** A house rule proposed by the extractor; its evidence lines were checked against the clone. */
 export const ConventionCandidate = z.object({
   id: z.string(),
+  repo_id: z.string(),
   rule: z.string(),
   evidence_path: z.string(),
+  evidence_line_start: z.number().int(),
+  evidence_line_end: z.number().int(),
+  /** The real text of those lines, read from the repo (not the model's quote). */
   evidence_snippet: z.string(),
   confidence: z.number().min(0).max(1),
-  accepted: z.boolean(),
+  status: ConventionStatus,
+  created_at: z.string(),
+  updated_at: z.string(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
+
+/** One extractor run. `failed` keeps the error; candidates come only from `done` scans. */
+export const ConventionScan = z.object({
+  id: z.string(),
+  repo_id: z.string(),
+  status: z.enum(['done', 'failed']),
+  model: z.string().nullable(),
+  /** Commit the samples were read at; evidence lines refer to it (null when unknown). */
+  head_sha: z.string().nullable(),
+  sample_files: z.array(z.string()),
+  sample_count: z.number().int(),
+  candidate_count: z.number().int(),
+  /** Candidates the model proposed whose evidence did not check out. */
+  dropped_count: z.number().int(),
+  error: z.string().nullable(),
+  created_at: z.string(),
+});
+export type ConventionScan = z.infer<typeof ConventionScan>;
+
+/** GET /repos/:id/conventions — the latest scan + non-rejected candidates. */
+export const RepoConventions = z.object({
+  scan: ConventionScan.nullable(),
+  candidates: z.array(ConventionCandidate),
+});
+export type RepoConventions = z.infer<typeof RepoConventions>;
+
+/** PUT /conventions/:id — accept / reject / inline edit of the rule. */
+export const UpdateConventionRequest = z
+  .object({
+    rule: z.string().trim().min(1).max(CONVENTION_RULE_MAX),
+    status: ConventionStatus,
+  })
+  .partial()
+  .refine((b) => Object.keys(b).length > 0, { message: 'Provide at least one field' });
+export type UpdateConventionRequest = z.infer<typeof UpdateConventionRequest>;
+
+/** POST /repos/:id/conventions/set-status — Accept all / Deselect all. */
+export const SetConventionsStatusRequest = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(200),
+  status: z.enum(['pending', 'accepted']),
+});
+export type SetConventionsStatusRequest = z.infer<typeof SetConventionsStatusRequest>;
+
+/** GET /repos/:id/conventions/skill-draft — accepted candidates merged into one skill. */
+export const ConventionSkillDraft = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: SkillType,
+  body: z.string(),
+  convention_count: z.number().int(),
+  evidence_files: z.array(z.string()),
+});
+export type ConventionSkillDraft = z.infer<typeof ConventionSkillDraft>;
 
 // ---- Agents ----
 // 'openrouter' routes through the OpenAI-compatible API (OpenAIProvider with a

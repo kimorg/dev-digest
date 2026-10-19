@@ -49,6 +49,18 @@ is still there. ·
 `client/src/components/findings-severity/FindingsSeverityCounts.tsx:183` ·
 **Apply when:** building or changing any hover-triggered popover, tooltip or menu.
 
+### 2026-10-18 — testing a whole page view in vitest: stub `AppShell` + repo context, pin `now` on the intl provider
+**Context:** `ConventionsView.test.tsx`, the first test that renders a full route view. · **Insight:** `AppShell`
+pulls in the router, repos and shortcuts. `vi.mock("@/components/app-shell", () => ({ AppShell: ({ children }) =>
+<div>{children}</div> }))`, plus a mocked `@/lib/repo-context` (`useActiveRepo`, `useRepoNotFound`) and
+`next/navigation` (`useParams`), are enough. `useNow()`/`format.relativeTime` are deterministic once
+`<NextIntlClientProvider now={new Date(…)}>` is set ("last scan 1 hour ago"). In CDP checks, a controlled
+`<textarea>` only takes a value through the native setter:
+`Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, v)` + `ta.dispatchEvent(new
+Event('input', { bubbles: true }))`. Assigning `ta.value` alone gets reverted by React. · **Evidence:**
+`client/src/app/repos/[repoId]/conventions/_components/ConventionsView/ConventionsView.test.tsx` · **Apply when:**
+testing a page-level view, or typing into a React input from a headless-Chrome script.
+
 ## What Doesn't Work
 
 _Dead ends and anti-patterns — what was tried and why it failed. The most skipped section, and the most valuable._
@@ -238,6 +250,15 @@ headless Chrome via CDP `getComputedStyle`. Note that a screenshot can't capture
 `client/src/vendor/ui/kit/SelectInput.tsx:36` · **Apply when:** any native control (select, date
 picker, scrollbar) looks light in dark theme, or when adding a new theme.
 
+### 2026-10-18 — an `Icon.*` inside running text breaks onto its own line: Tailwind's preflight makes `svg` a block
+**Context:** adding an external-link icon after the evidence path inside a `MonoLink`. · **Insight:**
+`vendor/ui/styles.css` does `@import "tailwindcss"`. Tailwind's preflight sets `svg { display: block }`, so a lucide icon
+placed inside inline text (a link, a span) wraps under the text in the real browser. vitest/jsdom doesn't
+lay out, so tests can't catch it. Give the icon `style={{ display: "inline-block", verticalAlign: "-1px" }}`,
+or put text and icon in an `inline-flex` container. Verified with a headless-Chrome screenshot. ·
+**Evidence:** `client/src/app/repos/[repoId]/conventions/_components/ConventionCard/styles.ts` (`linkIcon`),
+`client/src/app/globals.css:2` · **Apply when:** putting an icon inline with text outside a flex container.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -278,6 +299,8 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-17 — L02 Skills client implementation: the `Markdown` primitive rendered unstyled: headings and lists came out as plain paragraphs, every mutation error already shows a global toast; add inline errors only for form fields, the kit `Modal` is not portalled: inside a disabled card it inherits the card's opacity, `messages/en/skills.json` was rewritten and is now read, dnd-kit drag & drop can't run in jsdom; verify it with CDP key events in real Chrome, after adding a route, `tsc` fails: "Type '"/skills"' does not satisfy the constraint 'AppRoutes'"
 - 2026-10-18 — trace Prompt assembly: tokens only on Skills, hide skill wrapper: the trace Skills block hides the `<skill>`/`Description:` wrapper with a regex tied to the server format
 - 2026-10-18 — dark select dropdown: native `<select>` popups follow `color-scheme`, not the theme tokens
+- 2026-10-18 — L02 Conventions page: testing a whole page view in vitest: stub `AppShell` + repo context, pin `now` on the intl provider
+- 2026-10-18 — Conventions evidence → GitHub link: an `Icon.*` inside running text breaks onto its own line: Tailwind's preflight makes `svg` a block
 
 ## Open Questions
 

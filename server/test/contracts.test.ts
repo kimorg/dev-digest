@@ -21,6 +21,10 @@ import {
   UpdateSkillRequest,
   SkillImportDraft,
   Agent,
+  ConventionCandidate,
+  UpdateConventionRequest,
+  SetConventionsStatusRequest,
+  RepoConventions,
 } from '@devdigest/shared';
 
 /**
@@ -238,6 +242,9 @@ describe('skills contracts (L02)', () => {
     expect(CreateSkillRequest.safeParse({ ...create, body: '' }).success).toBe(false);
     expect(CreateSkillRequest.safeParse({ ...create, name: 'x'.repeat(81) }).success).toBe(false);
     expect(CreateSkillRequest.safeParse({ ...create, source: 'community' }).success).toBe(false);
+    expect(
+      CreateSkillRequest.parse({ ...create, source: 'extracted', enabled: false, evidence_files: ['a.ts'] }),
+    ).toMatchObject({ source: 'extracted', enabled: false, evidence_files: ['a.ts'] });
   });
 
   it('UpdateSkillRequest is partial but not empty', () => {
@@ -270,6 +277,39 @@ describe('skills contracts (L02)', () => {
     };
     expect(Agent.parse(agent).skill_count).toBeUndefined();
     expect(Agent.parse({ ...agent, skill_count: 3 }).skill_count).toBe(3);
+  });
+});
+
+describe('conventions contracts (L02)', () => {
+  const candidate = {
+    id: 'c1',
+    repo_id: 'r1',
+    rule: 'Use async/await',
+    evidence_path: 'src/a.ts',
+    evidence_line_start: 3,
+    evidence_line_end: 4,
+    evidence_snippet: 'await x();',
+    confidence: 0.91,
+    status: 'pending',
+    created_at: '2026-10-18T00:00:00.000Z',
+    updated_at: '2026-10-18T00:00:00.000Z',
+  };
+
+  it('ConventionCandidate carries the rule, file + lines, confidence and status', () => {
+    expect(ConventionCandidate.parse(candidate)).toEqual(candidate);
+    expect(ConventionCandidate.safeParse({ ...candidate, confidence: 1.2 }).success).toBe(false);
+    expect(ConventionCandidate.safeParse({ ...candidate, status: 'maybe' }).success).toBe(false);
+    expect(RepoConventions.parse({ scan: null, candidates: [candidate] }).candidates).toHaveLength(1);
+  });
+
+  it('UpdateConventionRequest is partial but not empty; set-status only accepts / deselects', () => {
+    expect(UpdateConventionRequest.parse({ rule: '  Keep it  ' })).toEqual({ rule: 'Keep it' });
+    expect(UpdateConventionRequest.safeParse({}).success).toBe(false);
+    expect(UpdateConventionRequest.safeParse({ rule: ' ' }).success).toBe(false);
+    const id = '00000000-0000-0000-0000-000000000000';
+    expect(SetConventionsStatusRequest.safeParse({ ids: [id], status: 'accepted' }).success).toBe(true);
+    expect(SetConventionsStatusRequest.safeParse({ ids: [id], status: 'rejected' }).success).toBe(false);
+    expect(SetConventionsStatusRequest.safeParse({ ids: [], status: 'accepted' }).success).toBe(false);
   });
 });
 

@@ -6,6 +6,7 @@ describe("routes", () => {
     expect(routes.pulls("r1")).toBe("/repos/r1/pulls");
     expect(routes.pull("r1", 42)).toBe("/repos/r1/pulls/42");
     expect(routes.agent("a1")).toBe("/agents/a1");
+    expect(routes.conventions("r1")).toBe("/repos/r1/conventions");
     expect(routes.settings()).toBe("/settings/api-keys");
     expect(routes.settings("models")).toBe("/settings/models");
   });
