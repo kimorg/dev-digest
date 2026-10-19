@@ -129,3 +129,9 @@ candidates only; synchronous scan; buttons "Run Scan" / "Re-scan".
 - 2026-10-18 — evidence links to GitHub (user): migration `0014_add_convention_scan_head_sha` adds
   `convention_scans.head_sha` (the clone's `git.currentHead()` when the scan starts; null if it can't
   be read — the scan still runs). `ConventionScan.head_sha: string | null` in both contract copies.
+- 2026-10-19 — migrations regenerated so `accepted` is backfilled (user): the unmerged `0012`–`0014`
+  above are replaced by `0012_conventions_extractor` (no `category`; `head_sha` created with the
+  table), `0013_backfill_convention_status` (custom: `status = 'accepted'` where `accepted`) and
+  `0014_drop_convention_accepted`. The final schema is unchanged. A DB that applied the old
+  `0012`–`0014` must be reset to `0011` before `pnpm db:migrate` (the new `0012` re-creates
+  `convention_scans`).

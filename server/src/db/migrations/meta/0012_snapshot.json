@@ -1,5 +1,5 @@
 {
-  "id": "f8cb0e83-6aa3-45e8-a987-3e419d8c3e48",
+  "id": "bc943599-0d33-4a2c-bb02-ea7a5bbec40d",
   "prevId": "eade608e-20ae-402a-a1ac-08905224ad15",
   "version": "7",
   "dialect": "postgresql",
@@ -1501,6 +1501,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "head_sha": {
+          "name": "head_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sample_files": {
           "name": "sample_files",
           "type": "jsonb",
@@ -1629,13 +1635,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "category": {
-          "name": "category",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'other'"
-        },
         "rule": {
           "name": "rule",
           "type": "text",
@@ -1671,6 +1670,13 @@
           "type": "double precision",
           "primaryKey": false,
           "notNull": false
+        },
+        "accepted": {
+          "name": "accepted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "status": {
           "name": "status",

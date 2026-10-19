@@ -1,7 +1,8 @@
 import type { ConventionCandidate, ConventionScan, ConventionStatus } from '@devdigest/shared';
 import type { ConventionRow, ConventionScanRow } from '../../db/rows.js';
+import { PathEscapeError } from '../../platform/errors.js';
 
-/** Pure helpers for the conventions module — DB row → DTO mapping. No I/O. */
+/** Pure helpers for the conventions module — DB row → DTO mapping, file-read error triage. No I/O. */
 
 export function toConventionDto(row: ConventionRow): ConventionCandidate {
   return {
@@ -35,8 +36,12 @@ export function toScanDto(row: ConventionScanRow): ConventionScan {
   };
 }
 
-/** True when a file read failed because the path isn't a readable file (missing, a dir…). */
-export function isMissingFileError(err: unknown): boolean {
+/**
+ * True when a file read failed because the path isn't a readable working-tree file
+ * (missing, a dir, or outside the clone / under `.git/`) — the scan skips it, it doesn't fail.
+ */
+export function isUnreadableFileError(err: unknown): boolean {
+  if (err instanceof PathEscapeError) return true;
   const code = (err as { code?: unknown } | null)?.code;
   return code === 'ENOENT' || code === 'EISDIR' || code === 'ENOTDIR';
 }

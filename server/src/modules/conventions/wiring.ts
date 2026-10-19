@@ -1,6 +1,6 @@
 import type { Container } from '../../platform/container.js';
 import { EXTRACTION_TIMEOUT_MS } from './constants.js';
-import { isMissingFileError } from './helpers.js';
+import { isUnreadableFileError } from './helpers.js';
 import { ConventionRepository } from './repository.js';
 import { ConventionService } from './service.js';
 import { ConventionExtraction } from './types.js';
@@ -17,7 +17,7 @@ export function buildConventionService(container: Container): ConventionService 
         try {
           return await container.git.readFile(repo, path);
         } catch (err) {
-          if (isMissingFileError(err)) return undefined;
+          if (isUnreadableFileError(err)) return undefined;
           throw err;
         }
       },
