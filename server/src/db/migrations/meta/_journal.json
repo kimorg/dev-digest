@@ -78,6 +78,34 @@
       "when": 1791561825228,
       "tag": "0010_clever_blonde_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792257496652,
+      "tag": "0011_skills_crud",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792408628611,
+      "tag": "0012_conventions_extractor",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792408632275,
+      "tag": "0013_backfill_convention_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792408639242,
+      "tag": "0014_drop_convention_accepted",
+      "breakpoints": true
     }
   ]
 }

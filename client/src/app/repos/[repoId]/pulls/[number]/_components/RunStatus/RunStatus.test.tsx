@@ -3,8 +3,9 @@ import { render, cleanup } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import messages from "../../../../../../../../messages/en/prReview.json";
 
-vi.mock("../../../../../../../lib/hooks/reviews", () => ({
-  useRunEvents: () => ({ events: [], running: false }),
+let running = false;
+vi.mock("@/lib/hooks/reviews", () => ({
+  useRunEvents: () => ({ events: [], running }),
 }));
 
 import { RunStatus } from "./RunStatus";
@@ -23,5 +24,26 @@ describe("RunStatus (smoke)", () => {
   it("renders nothing when there are no run ids", () => {
     const { container } = renderWithIntl(<RunStatus runIds={[]} />);
     expect(container.firstChild).toBeNull();
+  });
+});
+
+describe("RunStatus — onDone", () => {
+  it("fires once when the runs settle, even if the parent re-renders with a new callback", () => {
+    const calls: string[] = [];
+    running = true;
+    const { rerender } = renderWithIntl(<RunStatus runIds={["r1"]} onDone={() => calls.push("a")} />);
+    expect(calls).toEqual([]);
+
+    running = false;
+    const wrap = (ui: React.ReactElement) => (
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        {ui}
+      </NextIntlClientProvider>
+    );
+    rerender(wrap(<RunStatus runIds={["r1"]} onDone={() => calls.push("b")} />));
+    rerender(wrap(<RunStatus runIds={["r1"]} onDone={() => calls.push("c")} />));
+    rerender(wrap(<RunStatus runIds={["r1"]} onDone={() => calls.push("d")} />));
+
+    expect(calls).toEqual(["b"]);
   });
 });

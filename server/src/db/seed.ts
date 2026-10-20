@@ -6,7 +6,10 @@ import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
+  API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { TEST_QUALITY_SKILLS, API_CONTRACT_SKILLS, type SeedSkill } from './seed-skills.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -18,11 +21,13 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  *
  * Seeds: default workspace + system user + membership, default settings,
  * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
- * with a few findings, and the three built-in agents (General + Security +
- * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
+ * with a few findings, and the five built-in agents (General + Security +
+ * Performance + Test Quality + API Contract), all on the default
+ * openrouter/deepseek-v4-flash provider+model. Test Quality Reviewer gets three
+ * linked skills and API Contract Reviewer four (L02).
  *
- * Course lessons populate the other tables (skills, conventions, memory, eval,
- * …) once their features are built — they start empty here.
+ * Course lessons populate the other tables (conventions, memory, eval, …) once
+ * their features are built — they start empty here.
  */
 
 export const DEFAULT_WORKSPACE_NAME = 'default';
@@ -211,6 +216,30 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       version: 1,
       createdBy: userId,
     },
+    {
+      workspaceId,
+      name: 'Test Quality Reviewer',
+      description:
+        'Checks test quality: uncovered branches, missed corner cases, over-mocking, flaky tests.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
+    {
+      workspaceId,
+      name: 'API Contract Reviewer',
+      description:
+        'Catches breaking API changes: removed or renamed contract, response-shape drift, missing major bumps, silent removals.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: API_CONTRACT_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
   ];
   for (const a of seedAgents) {
     const [existing] = await db
@@ -218,6 +247,39 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
     if (!existing) await db.insert(t.agents).values(a);
+  }
+
+  // ---- built-in agents' skills (L02) ----
+  // Bodies live in ./seed-skills.ts (mirrored in docs/skills/<slug>/SKILL.md). Each skill
+  // gets its v1 snapshot; links are only created for skills this run inserted, so a user's
+  // later unlink/reorder survives a re-seed.
+  const seedSkillLinks: Array<[agentName: string, skills: SeedSkill[]]> = [
+    ['Test Quality Reviewer', TEST_QUALITY_SKILLS],
+    ['API Contract Reviewer', API_CONTRACT_SKILLS],
+  ];
+  for (const [agentName, skills] of seedSkillLinks) {
+    const [agent] = await db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, agentName)));
+    for (const [order, s] of skills.entries()) {
+      const [existing] = await db
+        .select()
+        .from(t.skills)
+        .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, s.name)));
+      if (existing) continue;
+      const [skill] = await db
+        .insert(t.skills)
+        .values({ workspaceId, ...s, source: 'manual', enabled: true, version: 1 })
+        .returning();
+      await db.insert(t.skillVersions).values({ skillId: skill!.id, version: 1, body: s.body });
+      if (agent) {
+        await db
+          .insert(t.agentSkills)
+          .values({ agentId: agent.id, skillId: skill!.id, order })
+          .onConflictDoNothing();
+      }
+    }
   }
 
   return { workspaceId, userId };

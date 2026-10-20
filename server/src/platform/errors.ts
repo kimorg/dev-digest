@@ -39,3 +39,16 @@ export class ConfigError extends AppError {
     super('config_error', message, 500, details);
   }
 }
+
+/** A read outside a repo clone's working tree: a `..` path, an outward symlink, or `.git/`. */
+export class PathEscapeError extends AppError {
+  constructor(path: string) {
+    super('path_escapes_clone', `Path is outside the repo working tree: ${path}`, 422, { path });
+  }
+}
+
+export class ConflictError extends AppError {
+  constructor(message = 'Conflict', code = 'conflict', details?: unknown) {
+    super(code, message, 409, details);
+  }
+}

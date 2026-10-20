@@ -8,7 +8,8 @@ import { Toggle, EmptyState, Chip, SEV } from "@devdigest/ui";
 import type { FindingRecord, Severity } from "@devdigest/shared";
 import { countBySeverity, SEVERITY_KEYS } from "@/components/findings-severity";
 import { FindingCard } from "../FindingCard";
-import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
+import { useFindingAction } from "@/lib/hooks/reviews";
+import { isTextInput } from "@/lib/dom-events";
 import { KEY_TO_ACTION } from "./constants";
 import { visibleFindings } from "./helpers";
 import { s } from "./styles";
@@ -18,11 +19,14 @@ export function FindingsPanel({
   prId,
   repoFullName,
   headSha,
+  isKeyboardActive = true,
 }: {
   findings: FindingRecord[];
   prId: string;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Only the active panel handles j/k/a/d — several run panels can be open at once. */
+  isKeyboardActive?: boolean;
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
@@ -37,6 +41,8 @@ export function FindingsPanel({
     () => visibleFindings(findings, hideLow, sevFilter),
     [findings, hideLow, sevFilter],
   );
+  // Clamp during render: filtering can shrink the list below the stored index.
+  const focused = Math.min(focusIdx, Math.max(shown.length - 1, 0));
   const toggleSeverity = (sev: Severity) => {
     setSevFilter((cur) => (cur === sev ? null : sev));
     setFocusIdx(0);
@@ -44,18 +50,18 @@ export function FindingsPanel({
 
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
+    if (!isKeyboardActive) return;
     const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key === "j") setFocusIdx((i) => Math.min(i + 1, shown.length - 1));
-      else if (e.key === "k") setFocusIdx((i) => Math.max(i - 1, 0));
-      else if (KEY_TO_ACTION[e.key] && shown[focusIdx]) {
-        action.mutate({ findingId: shown[focusIdx]!.id, action: KEY_TO_ACTION[e.key]!, prId });
+      if (isTextInput(e.target)) return;
+      if (e.key === "j") setFocusIdx(Math.min(focused + 1, shown.length - 1));
+      else if (e.key === "k") setFocusIdx(Math.max(focused - 1, 0));
+      else if (KEY_TO_ACTION[e.key] && shown[focused]) {
+        action.mutate({ findingId: shown[focused]!.id, action: KEY_TO_ACTION[e.key]!, prId });
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [shown, focusIdx, action, prId]);
+  }, [isKeyboardActive, shown, focused, action, prId]);
 
   return (
     <div>
@@ -85,7 +91,7 @@ export function FindingsPanel({
             <FindingCard
               key={f.id}
               f={f}
-              focused={i === focusIdx}
+              focused={i === focused}
               defaultExpanded={i === 0}
               pending={action.isPending}
               repoFullName={repoFullName}

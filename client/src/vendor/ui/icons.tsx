@@ -61,6 +61,7 @@ import {
   Link,
   Lock,
   Trash,
+  GripVertical,
   Pencil,
   Slash,
   Dot,
@@ -143,6 +144,7 @@ export const Icon = {
   Link,
   Lock,
   Trash,
+  GripVertical,
   // prototype used "Edit"; lucide exports Pencil/Edit — alias to keep API
   Edit: Pencil,
   Slash,

@@ -5,7 +5,7 @@
      the Agent-runs timeline (one run, findings already in memory).
    - "hover": hovering (or focusing) the whole cell opens one popover with all
      findings, ordered by severity. Used by the PR list FINDINGS column (the
-     PR's latest review, fetched lazily by prId). */
+     latest review of each agent, fetched lazily by prId). */
 "use client";
 
 import React from "react";
@@ -15,47 +15,9 @@ import type { FindingRecord, FindingsCounts, Severity } from "@devdigest/shared"
 import { FindingsPopover } from "./FindingsPopover";
 import { HOVER_CLOSE_MS, HOVER_OPEN_MS } from "./constants";
 import { SEVERITY_KEYS } from "./helpers";
+import { SeverityCounts } from "./SeverityCounts";
+import { s } from "./FindingsSeverityCounts.styles";
 
-const s = {
-  wrap: (hover: boolean, open: boolean): React.CSSProperties => ({
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 10,
-    ...(hover && {
-      padding: "2px 4px",
-      margin: "-2px -4px",
-      borderRadius: 4,
-      background: open ? "var(--bg-hover)" : "none",
-      cursor: "default",
-    }),
-  }),
-  button: (color: string, open: boolean): React.CSSProperties => ({
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    padding: "1px 0",
-    border: "none",
-    borderBottom: `1px dotted ${color}`,
-    background: open ? "var(--bg-hover)" : "none",
-    borderRadius: 0,
-    color,
-    font: "inherit",
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: "pointer",
-  }),
-  count: (color: string): React.CSSProperties => ({
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    padding: "1px 0",
-    borderBottom: `1px dotted ${color}`,
-    color,
-    fontSize: 13,
-    fontWeight: 600,
-  }),
-  none: { color: "var(--text-muted)" } satisfies React.CSSProperties,
-} as const;
 
 type Open = { severity: Severity | null; anchor: HTMLElement };
 
@@ -68,7 +30,7 @@ export function FindingsSeverityCounts({
   trigger = "click",
 }: {
   counts: FindingsCounts | null | undefined;
-  /** This scope's findings (timeline run). When absent, the popover fetches `prId`'s latest review. */
+  /** This scope's findings (timeline run). When absent, the popover fetches `prId`'s latest review per agent. */
   findings?: FindingRecord[];
   prId?: string | null;
   repoFullName?: string | null;
@@ -138,38 +100,34 @@ export function FindingsSeverityCounts({
         onBlur: scheduleClose,
       })}
     >
-      {shown.map(({ severity, key }) => {
-        const count = counts[key];
-        const meta = SEV[severity];
-        const I = Icon[meta.icon];
-        if (hover) {
+      {hover ? (
+        <SeverityCounts counts={counts} />
+      ) : (
+        shown.map(({ severity, key }) => {
+          const count = counts[key];
+          const meta = SEV[severity];
+          const I = Icon[meta.icon];
+          const isOpen = open?.severity === severity;
           return (
-            <span key={severity} className="tnum" aria-label={countAria(severity, count)} style={s.count(meta.c)}>
+            <button
+              key={severity}
+              type="button"
+              className="tnum"
+              aria-label={countAria(severity, count)}
+              aria-expanded={isOpen}
+              aria-haspopup="dialog"
+              onClick={(e) => {
+                const anchor = e.currentTarget;
+                setOpen((cur) => (cur?.severity === severity ? null : { severity, anchor }));
+              }}
+              style={s.button(meta.c, isOpen)}
+            >
               <I size={14} />
               {count}
-            </span>
+            </button>
           );
-        }
-        const isOpen = open?.severity === severity;
-        return (
-          <button
-            key={severity}
-            type="button"
-            className="tnum"
-            aria-label={countAria(severity, count)}
-            aria-expanded={isOpen}
-            aria-haspopup="dialog"
-            onClick={(e) => {
-              const anchor = e.currentTarget;
-              setOpen((cur) => (cur?.severity === severity ? null : { severity, anchor }));
-            }}
-            style={s.button(meta.c, isOpen)}
-          >
-            <I size={14} />
-            {count}
-          </button>
-        );
-      })}
+        })
+      )}
       {open && (
         <FindingsPopover
           anchor={open.anchor}

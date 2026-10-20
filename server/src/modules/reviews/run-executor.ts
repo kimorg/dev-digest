@@ -6,7 +6,7 @@ import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
 import { REVIEW_STRATEGY } from './constants.js';
-import { taskLine } from './helpers.js';
+import { countPromptTokens, renderSkillBlock, taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
@@ -183,6 +183,16 @@ export class ReviewRunExecutor {
 
       const task = taskLine(pull) + rankNote;
 
+      // L02 — the agent's linked, globally enabled skills, in its link order.
+      // That order is the order of the blocks under `## Skills / rules`.
+      const skillLinks = await this.agents.listEnabledSkillsForAgent(agent.id);
+      const skillBlocks = skillLinks.map((l) => renderSkillBlock(l.skill));
+      if (skillBlocks.length > 0) {
+        runLog.info(
+          `Injecting ${skillBlocks.length} skill(s): ${skillLinks.map((l) => l.skill.name).join(', ')}`,
+        );
+      }
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -200,6 +210,8 @@ export class ReviewRunExecutor {
         ...(callersDigest ? { callers: callersDigest } : {}),
         // T3 — repo skeleton, same omit-when-empty contract.
         ...(repoMap ? { repoMap } : {}),
+        // L02 — skills, same omit-when-empty contract.
+        ...(skillBlocks.length > 0 ? { skills: skillBlocks } : {}),
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
@@ -239,6 +251,21 @@ export class ReviewRunExecutor {
       // the timeline colors on, NOT the model's self-reported verdict.
       const blockers = countBlockers(keptFindings, agent.ciFailOn);
 
+      // Per-slot / per-skill token weights for the trace's Prompt assembly (L02).
+      // Counted BEFORE the run is marked done: the first tokenizer call loads the
+      // BPE ranks, and the trace must not lag far behind the `done` status that
+      // clients (and tests) poll before fetching it.
+      const promptAssembly: RunTrace['prompt_assembly'] = {
+        ...outcome.assembly,
+        tokens: countPromptTokens(outcome.assembly, (text) => this.container.tokenizer.count(text)),
+        skill_refs: skillLinks.map((l, i) => ({
+          id: l.skill.id,
+          name: l.skill.name,
+          version: l.skill.version,
+          tokens: this.container.tokenizer.count(skillBlocks[i]!),
+        })),
+      };
+
       // ---- Observability: agent_runs + ONE run_traces document --------------
       await this.repo.completeAgentRun(runId, {
         status: 'done',
@@ -270,7 +297,7 @@ export class ReviewRunExecutor {
           findings: findingRows.length,
           grounding,
         },
-        prompt_assembly: outcome.assembly,
+        prompt_assembly: promptAssembly,
         tool_calls: outcome.chunks.map((c) => ({
           tool: 'review_file',
           args: c.label,

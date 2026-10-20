@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
-import { Providers } from "../lib/providers";
-import { themeNoFlashScript } from "../lib/theme";
+import { Providers } from "@/lib/providers";
+import { themeNoFlashScript } from "@/lib/theme";
 
 export const metadata: Metadata = {
-  title: "DevDigest",
+  title: { default: "DevDigest", template: "%s · DevDigest" },
   description: "Local-first AI PR review tool",
 };
 
@@ -26,9 +25,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           (one level deep) — real mismatches in descendants are still reported. */}
       <body suppressHydrationWarning>
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <Suspense fallback={null}>
-            <Providers>{children}</Providers>
-          </Suspense>
+          {/* Screens that read search params bring their own <Suspense> (see their
+              page.tsx), so no app-wide boundary blanks the whole UI. */}
+          <Providers>{children}</Providers>
         </NextIntlClientProvider>
       </body>
     </html>

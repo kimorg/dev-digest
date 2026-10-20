@@ -27,6 +27,8 @@ import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
+import type { FeatureModels } from '../modules/settings/types.js';
+import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 
@@ -122,6 +124,11 @@ export class Container {
     if (this.overrides.depgraph) return this.overrides.depgraph;
     this._depgraph ??= new DepCruiseGraph();
     return this._depgraph;
+  }
+
+  /** Per-feature model choice (Settings → Models) for system LLM features. */
+  get featureModels(): FeatureModels {
+    return { resolve: (workspaceId, id) => resolveFeatureModel(this, workspaceId, id) };
   }
 
   /** Token counter (js-tiktoken) for the repo-map budget search. */

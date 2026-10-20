@@ -4,6 +4,7 @@
 import React from "react";
 import { Icon } from "@devdigest/ui";
 import { s } from "../../styles";
+import { UNSTYLED_BUTTON } from "@/lib/unstyled-button";
 
 export function TraceSection({
   icon,
@@ -22,12 +23,17 @@ export function TraceSection({
   const I = Icon[icon];
   return (
     <div style={s.section}>
-      <div onClick={() => setOpen((o) => !o)} style={s.sectionHead}>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        style={{ ...UNSTYLED_BUTTON, ...s.sectionHead }}
+      >
         <I size={15} style={s.sectionIcon} />
         <span style={s.sectionTitle}>{title}</span>
         {right}
         <Icon.ChevronDown size={15} style={s.chevron(open)} />
-      </div>
+      </button>
       {open && <div style={s.sectionBody}>{children}</div>}
     </div>
   );

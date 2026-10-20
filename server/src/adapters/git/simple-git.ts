@@ -1,6 +1,6 @@
 import { simpleGit, type SimpleGit } from 'simple-git';
-import { join } from 'node:path';
-import { mkdir, readFile, access, rm } from 'node:fs/promises';
+import { join, relative, resolve, sep } from 'node:path';
+import { mkdir, readFile, realpath, access, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import type {
   GitClient,
@@ -10,6 +10,7 @@ import type {
   BlameLine,
   GitCommit,
 } from '@devdigest/shared';
+import { PathEscapeError } from '../../platform/errors.js';
 import { parseUnifiedDiff } from './diff-parser.js';
 
 /**
@@ -127,8 +128,27 @@ export class SimpleGitClient implements GitClient {
   }
 
   async readFile(repo: RepoRef, path: string): Promise<string> {
-    return readFile(join(this.clonePathFor(repo), path), 'utf8');
+    // Paths can come from model output (conventions evidence) — never read outside the clone.
+    const root = resolve(this.clonePathFor(repo));
+    const full = resolve(root, path);
+    if (!isWorkingTreePath(root, full)) throw new PathEscapeError(path);
+    // A committed symlink can still point outside the clone (e.g. to ~/.devdigest/secrets.json),
+    // so check the real path too. realpath throws ENOENT for a missing file, just like readFile.
+    const [realRoot, realFull] = await Promise.all([realpath(root), realpath(full)]);
+    if (!isWorkingTreePath(realRoot, realFull)) throw new PathEscapeError(path);
+    return readFile(realFull, 'utf8');
   }
+}
+
+/**
+ * True when `full` is inside the clone `root` and not under its `.git/` — a clone made
+ * with a token keeps it in `.git/config` (the remote URL).
+ */
+function isWorkingTreePath(root: string, full: string): boolean {
+  if (!full.startsWith(root + sep)) return false;
+  return !relative(root, full)
+    .split(sep)
+    .some((segment) => segment.toLowerCase() === '.git');
 }
 
 function parseBlamePorcelain(raw: string): BlameLine[] {

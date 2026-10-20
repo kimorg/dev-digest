@@ -42,7 +42,9 @@
     "running": "Running…",
     "runReview": "Run Review",
     "mergedWarning": "Already merged — review is informational",
-    "mergedTooltip": "This PR is already merged; running a review won’t affect the merged code."
+    "mergedTooltip": "This PR is already merged; running a review won’t affect the merged code.",
+    "noAgents": "No agents yet — create one",
+    "disabledHint": "{model} · disabled"
   },
   "runStatus": {
     "elapsed": "Running · {count} agent(s)",
@@ -111,6 +113,65 @@
   "timeline": {
     "goToReview": "Jump to this run’s findings below",
     "openTrace": "Open run trace & logs",
-    "deleteRun": "Delete run"
+    "deleteRun": "Delete run",
+    "agentFallback": "Agent"
+  },
+  "notFound": {
+    "title": "Pull request not found",
+    "body": "PR #{number} isn't in this repository's synced list — the link may be stale.",
+    "cta": "Back to pull requests"
+  },
+  "detail": {
+    "breadcrumb": "Pull Requests",
+    "loadErrorTitle": "Couldn't load this pull request",
+    "loadErrorBody": "PR #{number} could not be loaded.",
+    "confirmDeleteRun": "Delete this run from history? (its logs are removed too)"
+  },
+  "reviewRun": {
+    "agentFallback": "Agent",
+    "verdictBadge": {
+      "request_changes": "request changes",
+      "approve": "approve",
+      "comment": "comment"
+    },
+    "findings": "{count, plural, one {# finding} other {# findings}}",
+    "blockers": "{count, plural, one { · # blocker} other { · # blockers}}",
+    "delete": "Delete this review run",
+    "confirmDelete": "Delete this “{agent}” review run and its findings?",
+    "expand": "Expand {agent} review run",
+    "collapse": "Collapse {agent} review run"
+  },
+  "tabs": {
+    "overview": "Overview",
+    "findings": "Agent runs",
+    "diff": "Files changed"
+  },
+  "header": {
+    "viewOnGithub": "View on GitHub",
+    "closedNotice": "This PR is already {status} — running a review is informational and won't affect the merged code."
+  },
+  "findingsTab": {
+    "liveReview": "Live review",
+    "cancel": "Cancel",
+    "openTrace": "Open run trace",
+    "inProgress": "Review in progress…",
+    "inProgressHint": "the agent is analyzing the diff — this can take a while on large PRs.",
+    "lethalTrifecta": "Lethal Trifecta detected",
+    "lethalTrifectaCount": "{count} finding(s)",
+    "timeline": "Timeline",
+    "timelineHint": "runs & commits · newest first",
+    "reviewRuns": "Review runs",
+    "reviewRunsHint": "grouped by run · newest first",
+    "emptyTitle": "No findings yet",
+    "emptyBody": "Run a review to generate findings. Use Run Review ▾ above (run all enabled agents or a specific one)."
+  },
+  "overview": {
+    "description": "Description"
+  },
+  "diff": {
+    "title": "Files changed · {count} files",
+    "showComments": "Show comments ({count})",
+    "hideComments": "Hide comments ({count})",
+    "postFailed": "Couldn't post the comment to GitHub."
   }
 }

@@ -1,4 +1,4 @@
-import type { PrMeta } from "../../../../lib/types";
+import type { PrMeta } from "@/lib/types";
 
 /** Constants for the PR list page (/repos/:repoId/pulls). */
 
@@ -29,14 +29,6 @@ export const GRID = "1fr 132px 92px 60px 124px 118px 84px 78px";
 /** Line-count thresholds for the S/M/L size bucket. */
 export const SIZE_SMALL_MAX = 100;
 export const SIZE_MEDIUM_MAX = 400;
-
-/** Filter chips: status key + i18n label key (under `list.filter`). */
-export const STATUS_FILTERS: { key: string; labelKey: string }[] = [
-  { key: "all", labelKey: "all" },
-  { key: "needs_review", labelKey: "needs_review" },
-  { key: "reviewed", labelKey: "reviewed" },
-  { key: "stale", labelKey: "stale" },
-];
 
 /** Column header i18n keys (under `list.columns`), in display order. */
 export const COLUMN_KEYS: string[] = [

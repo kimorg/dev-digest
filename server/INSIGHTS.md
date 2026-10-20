@@ -25,6 +25,15 @@ Entry format:
 
 _Approaches and solutions that worked and are worth repeating._
 
+### 2026-10-18 — a synchronous model call of ~70 s is fine end to end: no client or server request timeout
+**Context:** the conventions scan runs as one `POST /repos/:id/conventions/extract` request. ·
+**Insight:** a real scan (OpenRouter `qwen/qwen3.7-flash`, 12 samples) took about 73 s and returned 200.
+`apiFetch` sets no `AbortController` timeout and Fastify has no request timeout configured, so a
+synchronous route is viable for a single model call. Each call bounds itself with `timeoutMs` on
+`completeStructured`. Use a job only if the work must outlive the request or needs retries. ·
+**Evidence:** `client/src/lib/api.ts`, `server/src/modules/conventions/constants.ts`
+(`EXTRACTION_TIMEOUT_MS`) · **Apply when:** choosing between a sync route and a JobRunner job for one LLM call.
+
 ## What Doesn't Work
 
 _Dead ends and anti-patterns — what was tried and why it failed. The most skipped section, and the most valuable._
@@ -38,6 +47,31 @@ timestamp, and which one is "latest" is undefined. Set `createdAt` explicitly in
 **Evidence:** `server/test/reviews.it.test.ts:247`, `server/src/modules/pulls/routes.ts:130`,
 `server/src/modules/reviews/repository/review.repo.ts:66` · **Apply when:** writing a test or
 seed that relies on review/run ordering.
+
+### 2026-10-14 — the "hermetic" unit lane still writes to the dev DB: `buildApp()` reaps runs on boot
+**Context:** eval runs of the onion-architecture skill ran `routes-smoke.test.ts` in scratch copies. ·
+**Insight:** `buildApp()` always awaits `ReviewService.reapStaleRuns()`, with no `NODE_ENV=test`
+guard. That is an `UPDATE agent_runs SET status='failed' WHERE status='running'`. `loadConfig`
+reads `.env` (`import 'dotenv/config'`), and `DATABASE_URL` defaults to the local dev DB. So any
+unit test that builds the app (`routes-smoke.test.ts`, "No-DB route smoke tests") connects to a
+running dev Postgres and fails every in-flight review run there. Without a DB it only logs
+"stale-run reaping failed (non-fatal)". Don't run the unit lane while a review is running locally.
+Don't rely on "unit = no DB" for anything that calls `buildApp()`; a guard or an injected DB would
+fix it. · **Evidence:** `server/src/app.ts:79`, `server/src/platform/config.ts:1`,
+`server/src/modules/reviews/repository/run.repo.ts:105`, `server/test/routes-smoke.test.ts:11` ·
+**Apply when:** writing or running a test that calls `buildApp()`, or when local runs turn `failed` unexpectedly.
+
+### 2026-10-17 — a run is marked `done` before its trace is written: polling status then GET `/runs/:id/trace` can 404
+**Context:** a new L02 test passed alone but failed in the full `.it.test` lane. · **Insight:**
+`runOneAgent` calls `completeAgentRun(status 'done')` and only then builds and saves the
+`run_traces` row. So `waitForPrRuns` (and a client polling the run status) can return before the trace
+exists, and `GET /runs/:id/trace` answers 404. Any slow work between the two calls widens the gap.
+The first `container.tokenizer.count()` loads the tiktoken BPE ranks and made it fail under
+parallel load. Do slow work before `completeAgentRun`, and in tests poll the trace itself until it
+returns 200. · **Evidence:** `server/src/modules/reviews/run-executor.ts:258`,
+`server/src/modules/reviews/run-executor.ts:270`, `server/src/modules/reviews/run-executor.ts:315`,
+`server/test/reviews.it.test.ts` (`runAndTrace`) · **Apply when:** adding work to the success path
+of a run, or writing a test or UI that reads a trace right after the run finishes.
 
 ## Codebase Patterns
 
@@ -72,6 +106,84 @@ is already computed by reviewer-core (`ReviewOutcome.costUsd`: OpenRouter `usage
 `server/src/modules/reviews/repository/run.repo.ts:183`, `reviewer-core/src/review/run.ts:184` ·
 **Apply when:** adding any field to `RunTrace`/`RunStats`, or surfacing run tokens/cost.
 
+### 2026-10-17 — "latest run per agent" = latest `reviews` row per `(pr_id, agent_id)`; the rule is duplicated in the client
+**Context:** making the PR-list FINDINGS column sum each agent's latest run. · **Insight:** only
+a successful run writes a `reviews` row (`insertReview` on the success path). A failed or cancelled
+run updates `agent_runs` only. So grouping `reviews` by agent gives the latest *successful* run
+(the user chose this: a failed re-run keeps the agent's previous findings). Grouping `agent_runs`
+would give a run with no findings. `reviews.agent_id` is nullable with no FK; legacy/seed rows with
+null form one group. The same rule is re-implemented client-side for the hover popover
+(`latestReviewPerAgent`). Change both, or the counts and the popover list stop matching. ·
+**Evidence:** `server/src/modules/reviews/run-executor.ts:218`, `server/src/modules/reviews/run-executor.ts:296`,
+`server/src/modules/pulls/routes.ts:143`, `client/src/components/findings-severity/helpers.ts:32` ·
+**Apply when:** changing which reviews/runs the PR list's FINDINGS (or any per-agent aggregate) uses.
+
+### 2026-10-17 — skills scaffolding is half-wired: links persist, but no run ever loads them
+**Context:** writing the L02 Skills spec. · **Insight:** `GET|POST /agents/:id/skills` and the
+`agent_skills` table work, but `runOneAgent` calls `reviewPullRequest` without `skills`, so linked
+skills have no effect on a review. The link repository is not safe to build on as it is:
+`setSkills` deletes then inserts without a transaction, `setSkills` and `linkSkill` never check that
+the skill belongs to the agent's workspace (only the agent is checked), and `linkedSkills` does not
+filter `skills.enabled`. Changing links neither bumps the agent version nor snapshots it. ·
+**Evidence:** `server/src/modules/reviews/run-executor.ts:190`,
+`server/src/modules/agents/repository.ts:192`, `server/src/modules/agents/repository.ts:229` ·
+**Apply when:** implementing skills (spec `server/specs/003-skills.md`) or anything that reads agent↔skill links.
+
+### 2026-10-17 — a seeded agent joins every "Run all" review and gets no `agent_versions` v1
+**Context:** seeding Test Quality Reviewer. · **Insight:** `seed.ts` inserts `agents` rows
+directly (not through `AgentsRepository.insert`), so seeded agents have no `agent_versions` v1
+snapshot. A seeded `enabled: true` agent is picked by "Run all" (`listEnabled`), so every new
+seeded agent adds one LLM call (time and cost) to every full review. Seeded skills get their v1
+`skill_versions` row written by hand in the seed for the same reason. · **Evidence:**
+`server/src/db/seed.ts:221`, `server/src/modules/reviews/service.ts:50` · **Apply when:** adding a
+seeded agent or skill, or reading an agent's version history.
+
+### 2026-10-17 — skills are now wired into runs; the link guards are in place
+**Context:** implementing `server/specs/003-skills.md`. · **Insight:** Supersedes: "skills
+scaffolding is half-wired: links persist, but no run ever loads them". `runOneAgent` now injects
+`listEnabledSkillsForAgent` (linked AND `skills.enabled`, in `agent_skills.order`) as
+`<skill name=… version=…>` blocks under `## Skills / rules`. `setSkills` is transactional, and both
+link routes 404 on another workspace's skill. Links still do not bump the agent version. The trace's
+`prompt_assembly.skill_refs` is the record of which skill versions a run used. · **Evidence:**
+`server/src/modules/reviews/run-executor.ts:258`, `server/src/modules/agents/service.ts`
+(`assertSkillsInWorkspace`) · **Apply when:** reasoning about what a run's prompt contained, or changing skill links.
+
+### 2026-10-18 — a new module only passes the onion rules if its repository returns contract DTOs
+**Context:** the PR self-review blocked `modules/skills`. Its `SkillService(container)` built its own
+`SkillRepository`, the same legacy pattern `modules/agents` still uses (that one is in the depcruise
+baseline, so it isn't reported). · **Insight:** the rules leave no place for row types in the port.
+`ports.ts` may not import `db/rows`. A service may not import anything from `repository.ts`, not even
+a type. A repository may import only `ports.ts`, `helpers.ts` and domain files from its module. So the
+port has to be written in contract types. The repository maps rows to DTOs itself, through
+`helpers.ts`, and implements the port. Input types (`NewSkill`, `SkillPatch`) live in `ports.ts`.
+`wiring.ts` builds the service from `container.db`, and routes call the wiring function. A pure helper
+that needs an adapter takes a plain function (`countPromptTokens(assembly, count)`), not the adapter's
+type. · **Evidence:** `server/src/modules/skills/ports.ts`, `server/src/modules/skills/wiring.ts`,
+`server/src/modules/reviews/helpers.ts:115` · **Apply when:** adding a module or a new service, or
+when depcruise reports `application-no-repository` / `application-no-container`.
+
+### 2026-10-18 — a module that needs another module's function gets it through a `types.ts` facade on the container
+**Context:** the conventions module needed the Settings → Models choice (`resolveFeatureModel`). ·
+**Insight:** importing `modules/settings/feature-models.ts` from `modules/conventions/wiring.ts` breaks
+`no-cross-module-internals`, even from wiring. Only another module's `types.ts` may be imported. The fix
+is a facade interface `FeatureModels` in `modules/settings/types.ts`. `container.featureModels` builds it,
+because the container is composition and may import module code. Wiring then calls
+`container.featureModels.resolve(ws, 'conventions')`. This is the same shape as `container.repoIntel`.
+`depcruise` reported no new violations. · **Evidence:** `server/src/modules/settings/types.ts`,
+`server/src/platform/container.ts:130`, `server/src/modules/conventions/wiring.ts` · **Apply when:** a new
+module needs a capability that lives in another module's non-`types.ts` file.
+
+### 2026-10-18 — `getConventionSamples` filters configs out; tests' `MockGitClient` returns `''`, not ENOENT
+**Context:** building the conventions sampler. · **Insight:** the documented "conventions sample" excludes
+lint and format configs. `JUNK_PATH_PATTERNS` drops `eslint`, `prettier`, `.config.` and others. So any
+feature that wants configs must read them by path. `MockGitClient.readFile` returns `''` for an unknown
+path instead of throwing, while the real adapter throws `ENOENT`. Code that reads optional files must
+treat an empty string as "missing", or tests will see phantom files. In this repo's own clone the root
+has no eslint/prettier/tsconfig (they live per package), so a real scan sent only the 12 ranked files. ·
+**Evidence:** `server/src/modules/repo-intel/service.ts:713`, `server/src/adapters/mocks.ts:293`,
+`server/src/modules/conventions/service.ts` (`collectSamples`) · **Apply when:** sampling repo files for a
+model, or testing code that reads optional files through the git port.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -89,6 +201,50 @@ object dump ending in `routine: 'transformCreateStmt'`. It is harmless: success 
 `✓ migrations applied` line after it. · **Evidence:** `server/src/db/migrate.ts:23` ·
 **Apply when:** `db:migrate` output looks like a stack/error object — check for the ✓ line before debugging.
 
+### 2026-10-13 — dependency-cruiser path rules must match pnpm's `.pnpm/` layout
+**Context:** writing and running the onion-architecture import rules against `server/src`. ·
+**Insight:** under pnpm, npm imports resolve to `node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>/…`,
+so a `to.path` like `^node_modules/drizzle-orm/` matches nothing and the rule passes without
+reporting anything. Use `(^|/)node_modules/<pkg>/`. Running `pnpm exec depcruise ../reviewer-core/src`
+from `server/` resolves `@devdigest/shared` through the server's tsconfig alias to
+`src/vendor/shared/index.ts`, so exempt that path in reviewer-core rules. `tsPreCompilationDeps: true`
+is needed for `dependencyTypesNot: ['type-only']` to see `import type`. · **Evidence:**
+`.claude/skills/onion-architecture/references/enforcement.md` (configs verified: 16 server
+violations, reviewer-core clean) · **Apply when:** writing any dependency-cruiser rule for server or reviewer-core.
+
+### 2026-10-15 — a dependency-cruiser baseline matches `from → to` file pairs, not usages
+**Context:** adding a baseline workflow to the onion-architecture skill (v2.0.0). · **Insight:**
+`depcruise src --config X --output-type baseline --output-to known.json` (`depcruise-baseline` is the
+deprecated alias), then `--ignore-known known.json`, hides every violation whose `{from, to, rule}`
+is already listed. A new forbidden usage on a known edge, such as one more `this.container.x` read in a
+legacy service that already imports the container, is therefore invisible. Paths must also match
+exactly: a scratch copy with a symlinked `node_modules` resolves npm targets to different paths, so known
+drizzle edges reappear there as "new". Build the baseline and the comparison from the same checkout
+layout. · **Evidence:** a `known.json` entry is `{type, from, to, unresolvedTo, dependencyTypes, rule}`;
+on `server/src` it lists 27 known and gives 0 new against the same tree, and 20 instead of 15 on a
+symlinked copy · **Apply when:** using `--ignore-known` to judge whether a change added violations.
+
+### 2026-10-17 — fflate `unzipSync` with `filter: () => false` lists a zip without inflating anything
+**Context:** writing the zip-bomb-safe skill importer. · **Insight:** `unzipSync(bytes, { filter })`
+calls `filter` once per entry with `{ name, size, originalSize, compression }` read from the
+central directory, and decompresses only the entries it returns `true` for. A first pass that
+returns `false` therefore gives the whole listing (names + **declared** uncompressed sizes) at no
+inflate cost. A second pass inflates just the wanted entry. `originalSize` is what the archive
+claims, so re-check the inflated byte length too. A non-zip input throws, so catch and map it to a
+422. · **Evidence:** `server/src/modules/skills/import.ts:66`, `server/src/modules/skills/import.ts:100`,
+`server/test/skills-import.test.ts` (zip-bomb case) · **Apply when:** reading any uploaded archive.
+
+### 2026-10-18 — `pnpm db:generate` hangs silently when a change drops a column and adds others in the same table
+**Context:** migration `0012_conventions_extractor` (dropped `conventions.accepted` and added `status` plus 6
+other columns). · **Insight:** drizzle-kit asks "created or renamed from another column?" once for every new
+column in that table. Without a TTY (agent shell) the command just sits there until it times out. Nothing
+is written. Run it under a pseudo-terminal and press Enter once per prompt. The first option is
+"create column".
+`(sleep 20; for i in $(seq 1 12); do printf '\r'; sleep 3; done) | script -qec "pnpm db:generate --name X" /dev/null`.
+Check the generated SQL afterwards for `ADD COLUMN` and no `RENAME`. · **Evidence:**
+`server/src/db/migrations/0012_conventions_extractor.sql` · **Apply when:** a schema change removes a column
+while adding columns to the same table (or renames one).
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -101,6 +257,15 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-09 — Run Cost Badge: persisted run traces are never re-parsed, so new `RunTrace` fields must be optional, `pnpm db:migrate` prints a Postgres NOTICE that looks like an error
 
 - 2026-10-12 — PR-list FINDINGS latest review only: "latest review" tests: rows from one multi-row insert share `created_at`
+
+- 2026-10-13 — onion-architecture skill: dependency-cruiser path rules must match pnpm's `.pnpm/` layout
+- 2026-10-14 — onion-architecture eval runs: the "hermetic" unit lane still writes to the dev DB: `buildApp()` reaps runs on boot
+- 2026-10-15 — onion-architecture skill v2.0.0: a dependency-cruiser baseline matches `from → to` file pairs, not usages
+- 2026-10-17 — PR-list FINDINGS per agent: "latest run per agent" = latest `reviews` row per `(pr_id, agent_id)`; the rule is duplicated in the client
+- 2026-10-17 — L02 Skills spec + Test Quality Reviewer seed: skills scaffolding is half-wired: links persist, but no run ever loads them, a seeded agent joins every "Run all" review and gets no `agent_versions` v1
+- 2026-10-17 — L02 Skills server implementation: a run is marked `done` before its trace is written: polling status then GET `/runs/:id/trace` can 404, skills are now wired into runs; the link guards are in place, fflate `unzipSync` with `filter: () => false` lists a zip without inflating anything
+- 2026-10-18 — fix depcruise CRITICALs in skills/reviews: a new module only passes the onion rules if its repository returns contract DTOs
+- 2026-10-18 — L02 Conventions Extractor: a synchronous model call of ~70 s is fine end to end: no client or server request timeout, a module that needs another module's function gets it through a `types.ts` facade on the container, `getConventionSamples` filters configs out; tests' `MockGitClient` returns `''`, not ENOENT, `pnpm db:generate` hangs silently when a change drops a column and adds others in the same table
 
 ## Open Questions
 

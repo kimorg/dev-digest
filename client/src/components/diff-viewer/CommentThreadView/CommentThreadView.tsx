@@ -5,7 +5,8 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@devdigest/ui";
-import { type CommentThread, type DiffCommentApi, cs } from "../comments";
+import { type CommentThread, type DiffCommentApi } from "../comments";
+import { cs } from "../comments.styles";
 import { CommentCard } from "../CommentCard";
 import { InlineComposer } from "../InlineComposer";
 

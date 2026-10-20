@@ -16,6 +16,15 @@ import {
   Repo,
   PrDetail,
   PrMeta,
+  PromptAssembly,
+  CreateSkillRequest,
+  UpdateSkillRequest,
+  SkillImportDraft,
+  Agent,
+  ConventionCandidate,
+  UpdateConventionRequest,
+  SetConventionsStatusRequest,
+  RepoConventions,
 } from '@devdigest/shared';
 
 /**
@@ -201,6 +210,106 @@ describe('AI contracts parse fixtures', () => {
     const stats = { duration_ms: 1, tokens_in: 1, tokens_out: 1, findings: 0, grounding: '0/0 passed' };
     expect(RunTrace.parse({ ...base, stats: { ...stats, cost_usd: 0.0013 } }).stats.cost_usd).toBe(0.0013);
     expect(RunTrace.parse({ ...base, stats }).stats.cost_usd).toBeUndefined();
+  });
+
+  it('PromptAssembly tokens / skill_refs: parsed when present, optional for pre-L02 traces', () => {
+    const tokens = {
+      system: 120,
+      skills: 40,
+      memory: null,
+      specs: null,
+      callers: null,
+      repo_map: null,
+      pr_description: null,
+      user: 300,
+    };
+    const skill_refs = [{ id: 's1', name: 'Uncovered Branches', version: 3, tokens: 40 }];
+    const parsed = PromptAssembly.parse({ system: 's', user: 'u', tokens, skill_refs });
+    expect(parsed.tokens).toEqual(tokens);
+    expect(parsed.skill_refs).toEqual(skill_refs);
+    const old = PromptAssembly.parse({ system: 's', user: 'u' });
+    expect(old.tokens).toBeUndefined();
+    expect(old.skill_refs).toBeUndefined();
+  });
+});
+
+describe('skills contracts (L02)', () => {
+  const create = { name: '  Edge Cases ', description: 'Check boundaries.', type: 'rubric', body: '# x' };
+
+  it('CreateSkillRequest trims the name and requires a description and body', () => {
+    expect(CreateSkillRequest.parse(create).name).toBe('Edge Cases');
+    expect(CreateSkillRequest.safeParse({ ...create, description: ' ' }).success).toBe(false);
+    expect(CreateSkillRequest.safeParse({ ...create, body: '' }).success).toBe(false);
+    expect(CreateSkillRequest.safeParse({ ...create, name: 'x'.repeat(81) }).success).toBe(false);
+    expect(CreateSkillRequest.safeParse({ ...create, source: 'community' }).success).toBe(false);
+    expect(
+      CreateSkillRequest.parse({ ...create, source: 'extracted', enabled: false, evidence_files: ['a.ts'] }),
+    ).toMatchObject({ source: 'extracted', enabled: false, evidence_files: ['a.ts'] });
+  });
+
+  it('UpdateSkillRequest is partial but not empty', () => {
+    expect(UpdateSkillRequest.parse({ enabled: false })).toEqual({ enabled: false });
+    expect(UpdateSkillRequest.safeParse({}).success).toBe(false);
+  });
+
+  it('SkillImportDraft carries ignored files and warnings', () => {
+    const draft = SkillImportDraft.parse({
+      name: 'n',
+      description: '',
+      type: 'custom',
+      body: 'b',
+      ignored_files: ['scripts/run.sh'],
+      warnings: ['No description — write one before saving.'],
+    });
+    expect(draft.ignored_files).toEqual(['scripts/run.sh']);
+  });
+
+  it('Agent.skill_count is optional', () => {
+    const agent = {
+      id: 'a',
+      name: 'n',
+      description: '',
+      provider: 'openai',
+      model: 'm',
+      system_prompt: 'p',
+      enabled: true,
+      version: 1,
+    };
+    expect(Agent.parse(agent).skill_count).toBeUndefined();
+    expect(Agent.parse({ ...agent, skill_count: 3 }).skill_count).toBe(3);
+  });
+});
+
+describe('conventions contracts (L02)', () => {
+  const candidate = {
+    id: 'c1',
+    repo_id: 'r1',
+    rule: 'Use async/await',
+    evidence_path: 'src/a.ts',
+    evidence_line_start: 3,
+    evidence_line_end: 4,
+    evidence_snippet: 'await x();',
+    confidence: 0.91,
+    status: 'pending',
+    created_at: '2026-10-18T00:00:00.000Z',
+    updated_at: '2026-10-18T00:00:00.000Z',
+  };
+
+  it('ConventionCandidate carries the rule, file + lines, confidence and status', () => {
+    expect(ConventionCandidate.parse(candidate)).toEqual(candidate);
+    expect(ConventionCandidate.safeParse({ ...candidate, confidence: 1.2 }).success).toBe(false);
+    expect(ConventionCandidate.safeParse({ ...candidate, status: 'maybe' }).success).toBe(false);
+    expect(RepoConventions.parse({ scan: null, candidates: [candidate] }).candidates).toHaveLength(1);
+  });
+
+  it('UpdateConventionRequest is partial but not empty; set-status only accepts / deselects', () => {
+    expect(UpdateConventionRequest.parse({ rule: '  Keep it  ' })).toEqual({ rule: 'Keep it' });
+    expect(UpdateConventionRequest.safeParse({}).success).toBe(false);
+    expect(UpdateConventionRequest.safeParse({ rule: ' ' }).success).toBe(false);
+    const id = '00000000-0000-0000-0000-000000000000';
+    expect(SetConventionsStatusRequest.safeParse({ ids: [id], status: 'accepted' }).success).toBe(true);
+    expect(SetConventionsStatusRequest.safeParse({ ids: [id], status: 'rejected' }).success).toBe(false);
+    expect(SetConventionsStatusRequest.safeParse({ ids: [], status: 'accepted' }).success).toBe(false);
   });
 });
 

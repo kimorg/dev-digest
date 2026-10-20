@@ -4,23 +4,60 @@
     "crumbConventions": "Conventions",
     "headingPrefix": "Conventions in ",
     "repoFallback": "repo",
-    "subtitle": "Scan the cloned repo to surface house-rules — each backed by evidence you can turn into a Skill.",
-    "scanning": "Scanning…",
+    "subtitle": "Scan the cloned repo to surface house rules, each backed by evidence you can turn into a Skill.",
+    "scanSummary": "Detected from {count, plural, one {# sample file} other {# sample files}} · last scan {when}",
+    "dropped": "{count, plural, one {# candidate} other {# candidates}} dropped: evidence didn't match the code",
+    "lastScanFailed": "Last scan failed: {error}",
+    "runScan": "Run Scan",
     "rescan": "Re-scan",
-    "runExtraction": "Run extraction",
-    "extractionFailed": "Extraction failed",
-    "loadError": "Could not load conventions.",
-    "empty": {
-      "title": "No conventions extracted yet",
-      "body": "Scan the repo to surface house-rules — naming, error handling, structure — each backed by evidence you can turn into a Skill.",
-      "cta": "Run extraction"
-    },
-    "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files"
+    "scanning": "Scanning…",
+    "scanningBody": "Reading configs and the top-ranked files, then asking the Conventions model. This can take up to a minute.",
+    "loadError": "Could not load conventions."
+  },
+  "empty": {
+    "title": "No conventions extracted yet",
+    "body": "Scan the repo to surface house rules (naming, error handling, structure), each backed by evidence you can turn into a Skill.",
+    "cta": "Run Scan"
+  },
+  "noCandidates": {
+    "title": "No conventions found",
+    "body": "The last scan found no rule whose evidence checks out against the code. Re-scan to try again."
+  },
+  "toolbar": {
+    "acceptAll": "Accept all",
+    "deselectAll": "Deselect all",
+    "acceptedCount": "{accepted} of {total} accepted",
+    "createSkill": "Create skill"
   },
   "card": {
     "confidence": "Confidence",
+    "accept": "Accept",
     "accepted": "Accepted",
-    "accepting": "Accepting…",
-    "acceptAsSkill": "Accept as Skill"
+    "reject": "Reject",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "rule": "Rule",
+    "copy": "Copy evidence",
+    "copied": "Evidence copied"
+  },
+  "modal": {
+    "title": "Create skill from conventions",
+    "banner": "Merged from <b>{count, plural, one {# accepted convention} other {# accepted conventions}}</b> in <accent>{repo}</accent>. Everything below is editable before you save.",
+    "name": "Name",
+    "description": "Description",
+    "type": "Type",
+    "enabled": "Enabled",
+    "enabledHint": "Whether this block is added to agents' prompts.",
+    "body": "Skill body",
+    "unsaved": "unsaved",
+    "tokens": "{count} tokens",
+    "footer": "Saved as v1 · added to Skills Lab",
+    "cancel": "Cancel",
+    "create": "Create skill",
+    "creating": "Creating…",
+    "nameTaken": "A skill with this name already exists. Pick another name.",
+    "draftError": "Could not build the skill draft.",
+    "createdToast": "Skill \"{name}\" created from conventions"
   }
 }

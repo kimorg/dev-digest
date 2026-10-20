@@ -28,11 +28,24 @@ export function modelLabel(m: PricedModel): string {
   return parts.length ? `${m.id} — ${parts.join(" · ")}` : m.id;
 }
 
+/** A model picker option: a bare id, or an id with a rich label. */
+export type ModelOption = string | { value: string; label: string };
+
 /** Build SearchableSelect/SelectInput options: priced models get a rich label. */
-export function toModelOptions(
-  models: PricedModel[] | undefined,
-): (string | { value: string; label: string })[] {
+export function toModelOptions(models: PricedModel[] | undefined): ModelOption[] {
   return (models ?? []).map((m) =>
     m.pricing || m.contextLength ? { value: m.id, label: modelLabel(m) } : m.id,
   );
+}
+
+/** Options with `current` guaranteed selectable: prepended when the live list
+    lacks it (a registry default from another provider, or an empty list). */
+export function withCurrentModel(options: ModelOption[], current: string): ModelOption[] {
+  const has = options.some((o) => (typeof o === "string" ? o : o.value) === current);
+  return has ? options : [current, ...options];
+}
+
+/** A model list that loaded empty means the provider key is missing or invalid. */
+export function isModelListEmpty(models: unknown[] | undefined): boolean {
+  return models !== undefined && models.length === 0;
 }

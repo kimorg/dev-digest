@@ -1,2 +1,3 @@
 export { FindingsSeverityCounts } from "./FindingsSeverityCounts";
-export { countBySeverity, SEVERITY_KEYS } from "./helpers";
+export { SeverityCounts } from "./SeverityCounts";
+export { countBySeverity, sortBySeverity, lineLabel, SEVERITY_KEYS } from "./helpers";

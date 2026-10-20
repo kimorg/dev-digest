@@ -7,6 +7,8 @@ import { useTranslations } from "next-intl";
 import { Button, Icon, Modal } from "@devdigest/ui";
 import { s } from "../../styles";
 import { PromptModalBody } from "../PromptModalBody";
+import { COPIED_FEEDBACK_MS } from "../../constants";
+import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 
 const miniBtnStyle: React.CSSProperties = {
   display: "inline-flex",
@@ -20,21 +22,32 @@ const miniBtnStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-export function PromptBlock({ label, text, color }: { label: string; text: string; color: string }) {
+export interface PromptBlockProps {
+  label: string;
+  text: string;
+  color: string;
+  /** Token weight of this block; null/undefined (absent slot, pre-L02 trace) → not shown. */
+  tokens?: number | null;
+  /** Extra content shown above the text when expanded (e.g. the skills used). */
+  details?: React.ReactNode;
+}
+
+export function PromptBlock({ label, text, color, tokens, details }: PromptBlockProps) {
   const t = useTranslations("runs");
   const [open, setOpen] = React.useState(false);
   const [full, setFull] = React.useState(false);
-  const [copied, setCopied] = React.useState(false);
-  const copy = () => {
-    void navigator.clipboard?.writeText(text || "");
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
-  };
+  const { copied, copy: copyText } = useCopyToClipboard(COPIED_FEEDBACK_MS);
+  const copy = () => copyText(text || "");
   return (
     <div style={s.promptRow}>
       <div onClick={() => setOpen((o) => !o)} style={s.promptHead}>
         <span style={s.promptDot(color)} />
         <span style={s.promptLabel}>{label}</span>
+        {tokens != null && (
+          <span className="mono" style={s.promptTokens} data-testid="prompt-block-tokens">
+            {t("trace.prompt.tokens", { count: tokens })}
+          </span>
+        )}
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
           <button
             type="button"
@@ -60,11 +73,17 @@ export function PromptBlock({ label, text, color }: { label: string; text: strin
           >
             <Icon.ExternalLink size={12} />
           </button>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+          {/* Keyboard entry point for the header toggle (its click bubbles up). */}
+          <button
+            type="button"
+            aria-expanded={open}
+            style={{ ...s.textBtn, fontSize: 12, color: "var(--text-muted)" }}
+          >
             {open ? t("trace.collapse") : t("trace.expand")}
-          </span>
+          </button>
         </span>
       </div>
+      {open && details}
       {open && (
         <pre className="mono" style={s.promptPre}>
           {text || "—"}

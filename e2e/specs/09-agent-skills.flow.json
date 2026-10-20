@@ -1,0 +1,13 @@
+{
+  "name": "Agent editor Skills tab shows the Test Quality Reviewer's linked skills",
+  "description": "Opens the seeded Test Quality Reviewer from /agents, switches to its Skills tab (GET /agents/:id/skills + GET /skills) and confirms its three seeded skills are linked.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/agents"], "label": "load the agents page" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "agents fetch settles" },
+    { "cmd": ["find", "text", "Test Quality Reviewer", "click"], "label": "open the test quality reviewer" },
+    { "cmd": ["wait", "--url", "/agents/"], "label": "agent editor route reached" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Skills"], "label": "switch to the skills tab" },
+    { "cmd": ["wait", "--text", "3 of 3 enabled"], "label": "seeded skills are linked" },
+    { "cmd": ["wait", "--text", "Edge Case Checklist"], "label": "a linked skill is listed" }
+  ]
+}

@@ -7,9 +7,10 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Dropdown, type DropdownItemDef } from "@devdigest/ui";
-import { useAgents } from "../../../../../../../lib/hooks/agents";
-import { useRunReview } from "../../../../../../../lib/hooks/reviews";
+import { useAgents } from "@/lib/hooks/agents";
+import { useRunReview } from "@/lib/hooks/reviews";
 import { DROPDOWN_WIDTH } from "./constants";
+import { routes } from "@/lib/routes";
 
 export function RunReviewDropdown({
   prId,
@@ -55,10 +56,10 @@ export function RunReviewDropdown({
     ? all.map((a) => ({
         label: a.name,
         icon: "Cpu" as const,
-        hint: a.enabled ? a.model : `${a.model} · disabled`,
+        hint: a.enabled ? a.model : t("runReview.disabledHint", { model: a.model }),
         onClick: () => kick({ agentId: a.id }),
       }))
-    : [{ label: "No agents yet — create one", icon: "Plus", muted: true, onClick: () => router.push("/agents") }];
+    : [{ label: t("runReview.noAgents"), icon: "Plus", muted: true, onClick: () => router.push(routes.agents()) }];
 
   const items: DropdownItemDef[] = [
     // Merged/closed PRs can still be reviewed (informational only); lead with a
@@ -78,7 +79,7 @@ export function RunReviewDropdown({
     { divider: true },
     ...agentItems,
     { divider: true },
-    { label: t("runReview.configureAgents"), icon: "Settings", muted: true, onClick: () => router.push("/agents") },
+    { label: t("runReview.configureAgents"), icon: "Settings", muted: true, onClick: () => router.push(routes.agents()) },
   ];
 
   return (

@@ -1,7 +1,9 @@
-/* PRRow — one clickable row in the PR list table. Ported from screen_dashboard.jsx. */
+/* PRRow — one clickable row in the PR list table. The title is a real link (keyboard,
+   middle-click); the rest of the row navigates on click as a mouse convenience. */
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Icon, Avatar, Badge, CircularScore } from "@devdigest/ui";
@@ -10,35 +12,38 @@ import { RunCostBadge } from "@/components/run-cost-badge";
 import { FindingsSeverityCounts } from "@/components/findings-severity";
 import { SIZE_COLOR, STATUS_META } from "../../constants";
 import { relativeTime, sizeOf } from "../../helpers";
-import { s } from "../../styles";
+import { s } from "./styles";
+import { routes } from "@/lib/routes";
 
-export function PRRow({
-  pr,
-  repoId,
-  repoFullName,
-}: {
+interface PRRowProps {
   pr: PrMeta;
   repoId: string;
   /** owner/repo — deep-links a finding's file:line in the popover to GitHub. */
   repoFullName?: string | null;
-}) {
+}
+
+export function PRRow({ pr, repoId, repoFullName }: PRRowProps) {
   const t = useTranslations("prReview");
   const router = useRouter();
   const [h, setH] = React.useState(false);
   const st = STATUS_META[pr.status] ?? STATUS_META.needs_review!;
   const { size, lines } = sizeOf(pr);
   const reviewed = pr.score != null; // null score ⇒ PR has never been reviewed
+  const href = routes.pull(repoId, pr.number);
   return (
     <div
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
-      onClick={() => router.push(`/repos/${repoId}/pulls/${pr.number}`)}
+      onClick={() => router.push(href)}
       style={s.row(h)}
     >
       <div style={s.rowTitleCell}>
         <Icon.GitPullRequest size={15} style={s.rowIcon(st.c)} />
         <div style={s.rowTitleWrap}>
-          <div style={s.rowTitle(h)}>{pr.title}</div>
+          {/* stopPropagation: the link navigates itself; don't push again from the row. */}
+          <Link href={href} onClick={(e) => e.stopPropagation()} style={s.rowTitle(h)}>
+            {pr.title}
+          </Link>
           <span className="mono" style={s.rowNumber}>
             #{pr.number}
           </span>

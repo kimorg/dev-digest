@@ -35,3 +35,15 @@ export function githubBlobUrl(
   }
   return url;
 }
+
+/** GitHub blob link for a finding's file:line at the PR head, when the repo and
+    head sha are known (both arrive async on PR screens). */
+export function findingBlobUrl(
+  repoFullName: string | null | undefined,
+  headSha: string | null | undefined,
+  f: { file: string; start_line: number; end_line: number },
+): string | undefined {
+  return repoFullName && headSha
+    ? githubBlobUrl(repoFullName, headSha, f.file, f.start_line, f.end_line)
+    : undefined;
+}

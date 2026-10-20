@@ -22,6 +22,7 @@ Package maps: [server](server/AGENTS.md) · [client](client/AGENTS.md) ·
 - Whole stack from zero: `./scripts/dev.sh` (`--db-only`, `--no-client`, `--no-seed`).
   Only Postgres (pgvector) runs in Docker; API and web run on the host.
 - Tests are per package — see [TESTING.md](TESTING.md) for the suite map and CI lanes.
+- PR self-review hooks, once per clone: `git config core.hooksPath .githooks` (`dev.sh` does it).
 - Requires Node ≥ 22, pnpm ≥ 10, Docker.
 
 ## Gotchas
@@ -46,6 +47,15 @@ Package maps: [server](server/AGENTS.md) · [client](client/AGENTS.md) ·
    fine result. Also run it right after any non-obvious discovery.
 3. `INSIGHTS.md` files are **append-only and duplicate-free**: never edit, reorder or delete an
    existing entry; a correction is a new dated entry.
+4. **PR self-review (all agents, no exceptions).** Git hooks in `.githooks/` block `commit` and
+   `push` until the review passes (enable once: `git config core.hooksPath .githooks`).
+   - Before `git commit`: read and follow `.claude/skills/pr-self-review/SKILL.md`.
+     Re-run it after *any* further edit; the hook compares file hashes.
+   - Before `gh pr merge`: run `node .claude/skills/pr-self-review/scripts/check.mjs pr-merge [<n>]`
+     and proceed only on exit 0.
+   - Verdict `BLOCKED` (any CRITICAL) → fix and re-run; never lower a severity, edit
+     `.git/pr-self-review/`, use `--no-verify` or `PR_SELF_REVIEW_SKIP`. If the user asks to skip,
+     say a CRITICAL is open and let them run the command themselves.
 
 ## Where docs live
 

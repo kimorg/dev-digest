@@ -17,11 +17,12 @@ colour); `—` when there are none. Click trigger (default): click → popover w
 2-line rationale). Same icon again / another icon / `Esc` / outside click / scroll closes or
 switches. Portalled to `<body>` (`position: fixed`) because the table and accordions clip
 overflow; flips above the trigger near the viewport bottom. Clicks never bubble to the row.
-- **PR list** (`/repos/:repoId/pulls`) — FINDINGS column between Score and Status; counts come
-  from the PR's **latest** review (dismissed included). Here the trigger is **hover**
+- **PR list** (`/repos/:repoId/pulls`) — FINDINGS column between Score and Status; counts sum
+  the **latest review of each agent** (an agent's re-run replaces its earlier findings; dismissed
+  included). Here the trigger is **hover**
   (`trigger="hover"`): the counts are plain text, and hovering or focusing the cell opens, after
-  a short delay, one popover with **all** of the latest review's findings ordered by severity
-  ("N findings · latest review"). The popover stays open while the pointer moves into it and closes
+  a short delay, one popover with **all** of those reviews' findings ordered by severity
+  ("N findings · latest run per agent"; `latestReviewPerAgent` mirrors the server rule). The popover stays open while the pointer moves into it and closes
   shortly after it leaves (or on Esc / scroll). It fetches the PR's reviews on open (loading
   skeleton / error line).
 - **Agent runs → Timeline** (`RunHistory`) — counts for that run only, replacing the
@@ -37,7 +38,7 @@ overflow; flips above the trigger near the viewport bottom. Clicks never bubble 
 
 ## Acceptance criteria
 - Counts per severity match the findings (dismissed included); zero severities are hidden.
-- PR list: counts and popover use the latest review only; hovering the cell lists all its findings,
+- PR list: counts and popover use each agent's latest review only; hovering the cell lists all its findings,
   CRITICAL first; clicks inside the cell or popover don't open the PR.
 - Timeline: the popover lists only the clicked severity.
 - Pills filter to one severity and toggle off.
@@ -49,3 +50,5 @@ overflow; flips above the trigger near the viewport bottom. Clicks never bubble 
 ## Revisions
 - 2026-10-12 — PR list: latest review only; hover on the FINDINGS cell opens one all-severity
   popover (was click per severity). Timeline unchanged.
+- 2026-10-17 — PR list: counts and popover cover the latest review of each agent (was the PR's
+  single latest review).

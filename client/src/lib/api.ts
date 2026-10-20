@@ -18,6 +18,13 @@ export class ApiError extends Error {
   }
 }
 
+/** For a GET-by-id: the resource can't exist, so retrying won't help. That's a
+    404, or a 422 — the API rejects a malformed id (e.g. not a uuid) before lookup.
+    Don't use it for mutations, where a 422 means an invalid request body. */
+export function isNotFoundError(e: unknown): boolean {
+  return e instanceof ApiError && (e.status === 404 || e.status === 422);
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {

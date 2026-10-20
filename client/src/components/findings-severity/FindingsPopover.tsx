@@ -19,88 +19,10 @@ import {
 } from "@devdigest/ui";
 import type { FindingRecord, Severity } from "@devdigest/shared";
 import { usePrReviews } from "@/lib/hooks/reviews";
-import { githubBlobUrl } from "@/lib/github-urls";
-import { lineLabel, sortBySeverity } from "./helpers";
+import { findingBlobUrl } from "@/lib/github-urls";
+import { latestReviewPerAgent, lineLabel, pickFindings, plainText, placeUnder, type Placement } from "./helpers";
+import { s } from "./FindingsPopover.styles";
 
-const WIDTH = 440;
-const MAX_HEIGHT = 360;
-const GAP = 6;
-const EDGE = 8;
-
-type Placement = { left: number; top?: number; bottom?: number };
-
-function placeUnder(anchor: HTMLElement): Placement {
-  const r = anchor.getBoundingClientRect();
-  const left = Math.max(EDGE, Math.min(r.left, window.innerWidth - WIDTH - EDGE));
-  // Flip above the trigger when there's no room below (bottom rows of a table).
-  if (r.bottom + GAP + MAX_HEIGHT > window.innerHeight && r.top > window.innerHeight - r.bottom) {
-    return { left, bottom: window.innerHeight - r.top + GAP };
-  }
-  return { left, top: r.bottom + GAP };
-}
-
-/** One severity's findings, or all of them ordered by severity when `severity` is null. */
-function pick(findings: FindingRecord[], severity: Severity | null): FindingRecord[] {
-  return severity ? findings.filter((f) => f.severity === severity) : sortBySeverity(findings);
-}
-
-/** Markdown rationale → one plain-text line for the 2-line clamp. */
-function plainText(md: string): string {
-  return md.replace(/\*\*|`/g, "").replace(/\s+/g, " ").trim();
-}
-
-const s = {
-  root: (p: Placement): React.CSSProperties => ({
-    position: "fixed",
-    left: p.left,
-    top: p.top,
-    bottom: p.bottom,
-    width: WIDTH,
-    maxWidth: `calc(100vw - ${EDGE * 2}px)`,
-    maxHeight: MAX_HEIGHT,
-    overflowY: "auto",
-    background: "var(--bg-elevated)",
-    border: "1px solid var(--border-strong)",
-    borderRadius: 10,
-    boxShadow: "var(--shadow-modal)",
-    padding: "12px 14px",
-    zIndex: 60,
-    animation: "ddpop .12s ease",
-    cursor: "default",
-    textAlign: "left",
-  }),
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    fontSize: 12,
-    fontWeight: 600,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
-    color: "var(--text-muted)",
-    marginBottom: 4,
-  } satisfies React.CSSProperties,
-  item: (first: boolean): React.CSSProperties => ({
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-    padding: "10px 0",
-    borderTop: first ? "none" : "1px solid var(--border)",
-  }),
-  titleRow: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } satisfies React.CSSProperties,
-  title: { fontSize: 14, fontWeight: 600, color: "var(--text-primary)" } satisfies React.CSSProperties,
-  metaRow: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } satisfies React.CSSProperties,
-  rationale: {
-    fontSize: 13,
-    lineHeight: 1.5,
-    color: "var(--text-secondary)",
-    display: "-webkit-box",
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: "vertical",
-    overflow: "hidden",
-  } satisfies React.CSSProperties,
-  note: { fontSize: 13, color: "var(--text-muted)", padding: "8px 0" } satisfies React.CSSProperties,
-} as const;
 
 function FindingItem({
   f,
@@ -113,10 +35,7 @@ function FindingItem({
   repoFullName?: string | null;
   headSha?: string | null;
 }) {
-  const href =
-    repoFullName && headSha
-      ? githubBlobUrl(repoFullName, headSha, f.file, f.start_line, f.end_line)
-      : undefined;
+  const href = findingBlobUrl(repoFullName, headSha, f);
   return (
     <li style={s.item(first)}>
       <div style={s.titleRow}>
@@ -156,7 +75,7 @@ function FindingList({
 }
 
 /** PR-list source: fetch the PR's reviews only once the popover is open, and
-    show the LATEST review only — the same review the list's counts come from. */
+    show the LATEST review of each agent — the same reviews the list's counts come from. */
 function PrFindingList({
   prId,
   severity,
@@ -180,8 +99,8 @@ function PrFindingList({
   }
   if (reviews.isError) return <div style={s.note}>{t("findingsSeverity.error")}</div>;
   // Reviews come newest-first (GET /pulls/:id/reviews orders by created_at desc).
-  const latest = (reviews.data ?? []).find((r) => r.kind === "review");
-  const findings = pick(latest?.findings ?? [], severity);
+  const latest = latestReviewPerAgent(reviews.data ?? []);
+  const findings = pickFindings(latest.flatMap((r) => r.findings), severity);
   return <FindingList findings={findings} repoFullName={repoFullName} headSha={headSha} />;
 }
 
@@ -266,7 +185,7 @@ export function FindingsPopover({
       </div>
       {findings ? (
         <FindingList
-          findings={pick(findings, severity)}
+          findings={pickFindings(findings, severity)}
           repoFullName={repoFullName}
           headSha={headSha}
         />

@@ -39,6 +39,14 @@ can't be imported or swapped from outside. The only way in is through `assembleP
 appends it on every review path. · **Apply when:** testing injection resistance — assert on the
 `assemblePrompt` output, not on the constant.
 
+### 2026-10-18 — `INJECTION_GUARD` is now exported (read-only) for non-review prompts
+**Context:** the server's conventions extractor sends repo files to a model. · **Insight:** Supersedes:
+"`INJECTION_GUARD` is module-private". It is exported from `src/prompt.ts` and `src/index.ts` so other
+prompts that carry untrusted code can append the same guard (with `wrapUntrusted`) instead of copying it.
+It stays a `const`, so it still can't be swapped. `assemblePrompt` is unchanged, and review paths append it
+as before. · **Evidence:** `reviewer-core/src/prompt.ts:16`, `server/src/modules/conventions/prompt.ts` ·
+**Apply when:** building any server prompt that includes repo or PR content.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -51,6 +59,7 @@ _An error that keeps coming back — quote its text — and the fix._
 
 _One dated line per session that added entries: `- YYYY-MM-DD — task: titles added`._
 
+- 2026-10-18 — conventions prompt reuses the guard: `INJECTION_GUARD` is now exported (read-only) for non-review prompts
 ## Open Questions
 
 _Still unresolved — what is known, what isn't, where to look next._

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { waitForPrRuns } from './helpers/runs.js';
 import { buildApp } from '../src/app.js';
@@ -218,7 +219,80 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     await app.close();
   });
 
-  it('PR list COST = sum of all agent runs (NULL costs skipped; null when none) + FINDINGS of the latest review', async () => {
+  it('injects linked, enabled skills in link order and records their tokens in the trace (L02)', async () => {
+    const app = await appWith(REVIEW_FIXTURE);
+    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+    const agent = (
+      await app.inject({
+        method: 'POST',
+        url: '/agents',
+        payload: { name: 'Skilled', provider: 'openai', model: 'gpt-4.1', system_prompt: 'p' },
+      })
+    ).json();
+    const mkSkill = async (name: string) =>
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/skills',
+          payload: { name, description: `${name} rule.`, type: 'custom', body: `Body of ${name}.` },
+        })
+      ).json();
+    const alpha = await mkSkill('Alpha Rule');
+    const beta = await mkSkill('Beta Rule');
+
+    // Run the agent and return the persisted trace of that (n-th) run.
+    const runAndTrace = async (n: number) => {
+      const runId = (
+        await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } })
+      ).json().runs[0].run_id;
+      await waitForPrRuns(pg.handle.db, pr.id, { expected: n });
+      // The run is marked `done` just before its trace is written — poll the trace itself.
+      for (let i = 0; i < 200; i++) {
+        const res = await app.inject({ method: 'GET', url: `/runs/${runId}/trace` });
+        if (res.statusCode === 200) return res.json();
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      throw new Error(`trace of run ${runId} was never written`);
+    };
+    const link = (ids: string[]) =>
+      app.inject({ method: 'POST', url: `/agents/${agent.id}/skills`, payload: { skill_ids: ids } });
+
+    await link([alpha.id, beta.id]);
+    const first = (await runAndTrace(1)).prompt_assembly;
+    expect(first.skills.indexOf('<skill name="Alpha Rule" version="1">')).toBeGreaterThanOrEqual(0);
+    expect(first.skills.indexOf('Alpha Rule')).toBeLessThan(first.skills.indexOf('Beta Rule'));
+    expect(first.user).toContain('## Skills / rules');
+    expect(first.tokens.skills).toBeGreaterThan(0);
+    expect(first.tokens.memory).toBeNull();
+    expect(first.skill_refs.map((r: { name: string }) => r.name)).toEqual(['Alpha Rule', 'Beta Rule']);
+    expect(first.skill_refs[0]).toMatchObject({ id: alpha.id, version: 1 });
+    expect(first.skill_refs[0].tokens).toBeGreaterThan(0);
+
+    // Reorder → the blocks swap places in the next run's prompt.
+    await link([beta.id, alpha.id]);
+    const second = (await runAndTrace(2)).prompt_assembly;
+    expect(second.skills.indexOf('Beta Rule')).toBeLessThan(second.skills.indexOf('Alpha Rule'));
+
+    // A globally disabled skill stays linked but is skipped at run time.
+    await app.inject({ method: 'PUT', url: `/skills/${beta.id}`, payload: { enabled: false } });
+    const third = (await runAndTrace(3)).prompt_assembly;
+    expect(third.skills).not.toContain('Beta Rule');
+    expect(third.skill_refs.map((r: { name: string }) => r.name)).toEqual(['Alpha Rule']);
+    const links = (await app.inject({ method: 'GET', url: `/agents/${agent.id}/skills` })).json();
+    expect(links).toHaveLength(2);
+
+    // No enabled skills → the section is absent and its token slot is null.
+    await link([]);
+    const fourth = (await runAndTrace(4)).prompt_assembly;
+    expect(fourth.skills).toBeNull();
+    expect(fourth.tokens.skills).toBeNull();
+    expect(fourth.skill_refs).toEqual([]);
+    expect(fourth.user).not.toContain('## Skills / rules');
+
+    await app.close();
+  });
+
+  it('PR list COST = sum of all agent runs (NULL costs skipped; null when none) + FINDINGS of the latest review per agent', async () => {
     const app = await appWith(REVIEW_FIXTURE);
     const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
     const [unreviewed] = await pg.handle.db
@@ -243,14 +317,17 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
       { workspaceId, prId: pr.id, status: 'done', costUsd: 0.0005 },
       { workspaceId, prId: pr.id, status: 'failed', costUsd: null },
     ]);
-    // Two reviews of the same PR → FINDINGS counts only the newer one (rvB),
-    // dismissed findings included. Explicit createdAt: a multi-row insert would
-    // give both rows the same now().
-    const [rvA, rvB] = await pg.handle.db
+    // Agent A ran twice (rvA1 → rvA2), agent B once (rvB, between them) →
+    // FINDINGS sums A's newer review and B's review, dismissed findings included.
+    // Explicit createdAt: a multi-row insert would give all rows the same now().
+    const agentA = randomUUID();
+    const agentB = randomUUID();
+    const [rvA1, rvB, rvA2] = await pg.handle.db
       .insert(t.reviews)
       .values([
-        { workspaceId, prId: pr.id, kind: 'review', score: 40, createdAt: new Date('2026-10-01T10:00:00Z') },
-        { workspaceId, prId: pr.id, kind: 'review', score: 70, createdAt: new Date('2026-10-02T10:00:00Z') },
+        { workspaceId, prId: pr.id, agentId: agentA, kind: 'review', score: 40, createdAt: new Date('2026-10-01T10:00:00Z') },
+        { workspaceId, prId: pr.id, agentId: agentB, kind: 'review', score: 55, createdAt: new Date('2026-10-01T12:00:00Z') },
+        { workspaceId, prId: pr.id, agentId: agentA, kind: 'review', score: 70, createdAt: new Date('2026-10-02T10:00:00Z') },
       ])
       .returning();
     const finding = (reviewId: string, severity: string, dismissed = false) => ({
@@ -266,10 +343,11 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
       dismissedAt: dismissed ? new Date() : null,
     });
     await pg.handle.db.insert(t.findings).values([
-      finding(rvA!.id, 'CRITICAL'),
-      finding(rvA!.id, 'WARNING'),
-      finding(rvB!.id, 'CRITICAL', true),
-      finding(rvB!.id, 'SUGGESTION'),
+      finding(rvA1!.id, 'CRITICAL'),
+      finding(rvA1!.id, 'WARNING'),
+      finding(rvB!.id, 'WARNING'),
+      finding(rvA2!.id, 'CRITICAL', true),
+      finding(rvA2!.id, 'SUGGESTION'),
     ]);
 
     const res = await app.inject({ method: 'GET', url: `/repos/${repo.id}/pulls` });
@@ -283,7 +361,7 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(list.find((p) => p.id === unreviewed!.id)!.cost_usd).toBeNull();
     expect(list.find((p) => p.id === pr.id)!.findings_counts).toEqual({
       critical: 1,
-      warning: 0,
+      warning: 1,
       suggestion: 1,
     });
     expect(list.find((p) => p.id === unreviewed!.id)!.findings_counts).toBeNull();

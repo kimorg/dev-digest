@@ -1,0 +1,2 @@
+ALTER TABLE "skills" ADD COLUMN "updated_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "skills_ws_name_uq" ON "skills" USING btree ("workspace_id",lower("name"));
