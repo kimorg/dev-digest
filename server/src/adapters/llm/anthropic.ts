@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import Anthropic, { type ClientOptions } from '@anthropic-ai/sdk';
 import type {
   LLMProvider,
   ModelInfo,
@@ -13,8 +13,9 @@ import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
 import { ExternalServiceError } from '../../platform/errors.js';
 
-const DEFAULT_TIMEOUT = 60_000;
-const DEFAULT_MAX_TOKENS = 4096;
+// Claude 5.x thinks by default: thinking adds latency and counts toward max_tokens.
+const DEFAULT_TIMEOUT = 180_000;
+const DEFAULT_MAX_TOKENS = 16_000;
 
 /** Anthropic has no embeddings API; embeddings come from the OpenAI Embedder. */
 function splitSystem(messages: ChatMessage[]): {
@@ -31,19 +32,29 @@ function splitSystem(messages: ChatMessage[]): {
   return { system, rest };
 }
 
+function textOf(content: Anthropic.ContentBlock[]): string {
+  return content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('');
+}
+
 /**
  * Anthropic LLMProvider.
  * - listModels: dynamic via GET /models.
- * - completeStructured: FORCED tool-use (single tool, input_schema = our JSON
- *   schema, tool_choice forces it), parse tool_use.input, Zod validate + reprompt.
+ * - completeStructured: tool-use with tool_choice `auto` (Claude Sonnet 5.5,
+ *   Opus 5.5 and Fable 5.1 reject a forced tool_choice) — the system prompt asks
+ *   for the tool; parse tool_use.input (or JSON in text), Zod validate + reprompt.
+ * - No `temperature`: Claude 5.x models reject non-default sampling values.
  * - embed: NOT supported (throws) — use the OpenAI Embedder for vectors.
  */
 export class AnthropicProvider implements LLMProvider {
   readonly id = 'anthropic' as const;
   private client: Anthropic;
 
-  constructor(apiKey: string) {
-    this.client = new Anthropic({ apiKey });
+  /** `options` lets tests inject `fetch` and turn off SDK retries. */
+  constructor(apiKey: string, options: Pick<ClientOptions, 'fetch' | 'maxRetries'> = {}) {
+    this.client = new Anthropic({ apiKey, ...options });
   }
 
   async listModels(): Promise<ModelInfo[]> {
@@ -69,12 +80,8 @@ export class AnthropicProvider implements LLMProvider {
       system: system || undefined,
       messages: rest,
       max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-      temperature: req.temperature ?? 0.2,
     });
-    const text = res.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('');
+    const text = textOf(res.content);
     const tokensIn = res.usage.input_tokens;
     const tokensOut = res.usage.output_tokens;
     return {
@@ -91,6 +98,7 @@ export class AnthropicProvider implements LLMProvider {
     const toolName = req.schemaName.replace(/[^a-zA-Z0-9_-]/g, '_');
     const maxRetries = req.maxRetries ?? 2;
     const { system, rest } = splitSystem(req.messages);
+    const instruction = `Always answer by calling the \`${toolName}\` tool exactly once.`;
     const messages: Anthropic.MessageParam[] = [...rest];
     let tokensIn = 0;
     let tokensOut = 0;
@@ -101,10 +109,9 @@ export class AnthropicProvider implements LLMProvider {
         withTimeout(
           this.client.messages.create({
             model: req.model,
-            system: system || undefined,
+            system: system ? `${system}\n\n${instruction}` : instruction,
             messages,
             max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-            temperature: req.temperature ?? 0,
             tools: [
               {
                 name: toolName,
@@ -112,7 +119,7 @@ export class AnthropicProvider implements LLMProvider {
                 input_schema: jsonSchema.schema as Anthropic.Tool.InputSchema,
               },
             ],
-            tool_choice: { type: 'tool', name: toolName },
+            tool_choice: { type: 'auto', disable_parallel_tool_use: true },
           }),
           req.timeoutMs ?? DEFAULT_TIMEOUT,
         ),
@@ -120,10 +127,18 @@ export class AnthropicProvider implements LLMProvider {
       tokensIn += res.usage.input_tokens;
       tokensOut += res.usage.output_tokens;
 
+      // SDK 0.33 types don't list 'refusal'; the same request would be refused again.
+      if ((res.stop_reason as string) === 'refusal') {
+        throw new ExternalServiceError('Anthropic declined the request (stop_reason: refusal)', {
+          model: req.model,
+        });
+      }
+
       const toolUse = res.content.find(
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
       );
-      lastRaw = toolUse ? JSON.stringify(toolUse.input) : '';
+      // With tool_choice `auto` the model may answer in text instead of calling the tool.
+      lastRaw = toolUse ? JSON.stringify(toolUse.input) : textOf(res.content);
 
       const parsed = parseWithRepair(req.schema, lastRaw);
       if (parsed.ok) {
@@ -137,10 +152,26 @@ export class AnthropicProvider implements LLMProvider {
           attempts: attempt,
         };
       }
+      // A retry with the same budget would be cut off again.
+      if (res.stop_reason === 'max_tokens') {
+        throw new ExternalServiceError('Anthropic output hit max_tokens before a valid result', {
+          raw: lastRaw,
+        });
+      }
       messages.push({ role: 'assistant', content: res.content });
+      // The API requires a tool_use to be answered by a tool_result with the same id.
       messages.push({
         role: 'user',
-        content: parsed.repromptMessage,
+        content: toolUse
+          ? [
+              {
+                type: 'tool_result',
+                tool_use_id: toolUse.id,
+                is_error: true,
+                content: parsed.repromptMessage,
+              },
+            ]
+          : `${parsed.repromptMessage}\n\n${instruction}`,
       });
     }
 
