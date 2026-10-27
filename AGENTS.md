@@ -62,3 +62,4 @@ Package maps: [server](server/AGENTS.md) · [client](client/AGENTS.md) ·
 - Per package: `README.md` (overview) · `docs/` (deep reference) · `specs/` (feature specs)
   · `INSIGHTS.md` (learned gotchas). Read them when the task touches that package.
 - Root `docs/agent-prompts/` — reviewer system-prompt library (General, Security, Performance).
+- Root `docs/plans/` — approved Development Plans (`NNN-<slug>.md`) from `planner`, executed by `implementer`.

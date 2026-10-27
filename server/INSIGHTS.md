@@ -245,6 +245,22 @@ Check the generated SQL afterwards for `ADD COLUMN` and no `RENAME`. · **Eviden
 `server/src/db/migrations/0012_conventions_extractor.sql` · **Apply when:** a schema change removes a column
 while adding columns to the same table (or renames one).
 
+### 2026-10-27 — `pnpm typecheck` now covers `server/test/**` via `tsconfig.test.json`
+**Context:** plan `docs/plans/001-typecheck-tests.md` · **Insight:** Supersedes: "`pnpm typecheck`
+never sees `server/test/**`; vitest runs tests without type checking". `typecheck` (server and
+reviewer-core) now runs `tsc --noEmit -p tsconfig.test.json` (extends `tsconfig.json`, adds
+`test/**/*.ts`); turning it on surfaced 13 latent errors in `server/test` and 1 in
+`reviewer-core/test`, all fixed in test code only. `build` and dependency-cruiser stay on
+`tsconfig.json` (src only) — widening its `include` would make `build` emit tests into `dist/`.
+The pr-self-review typecheck, `implementer-verify` and `test-writer-verify` pick
+`tsconfig.test.json` when it exists, else `tsconfig.json`. A tsconfig placed **outside** the
+package fails with `TS2688: Cannot find type definition file for 'node'` (`types` resolve from
+the config's directory) — keep ad-hoc configs inside the package ·
+**Evidence:** `server/tsconfig.test.json`, `server/package.json:10`, `reviewer-core/package.json:8`,
+`.claude/skills/pr-self-review/scripts/checks.mjs` (`runTypecheck`), `.claude/hooks/implementer-verify.mjs`,
+`.claude/hooks/test-writer-verify.mjs` · **Apply when:** adding a test-only directory or a new
+tsc invocation in a script/hook — point it at `tsconfig.test.json`, not `tsconfig.json`.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -266,6 +282,7 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-17 — L02 Skills server implementation: a run is marked `done` before its trace is written: polling status then GET `/runs/:id/trace` can 404, skills are now wired into runs; the link guards are in place, fflate `unzipSync` with `filter: () => false` lists a zip without inflating anything
 - 2026-10-18 — fix depcruise CRITICALs in skills/reviews: a new module only passes the onion rules if its repository returns contract DTOs
 - 2026-10-18 — L02 Conventions Extractor: a synchronous model call of ~70 s is fine end to end: no client or server request timeout, a module that needs another module's function gets it through a `types.ts` facade on the container, `getConventionSamples` filters configs out; tests' `MockGitClient` returns `''`, not ENOENT, `pnpm db:generate` hangs silently when a change drops a column and adds others in the same table
+- 2026-10-27 — plan 001 typecheck of tests: `pnpm typecheck` now covers `server/test/**` via `tsconfig.test.json`
 
 ## Open Questions
 

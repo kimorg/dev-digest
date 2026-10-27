@@ -21,22 +21,26 @@ const notRun = (file, what, reason) => ({
   fix: null,
 });
 
-/** `tsc --noEmit` in one package. Any error is CRITICAL: the packages typecheck clean at HEAD. */
+/**
+ * `tsc --noEmit` in one package — src + test where `tsconfig.test.json` exists (server, reviewer-core;
+ * their `tsconfig.json` covers src/ only). Any error is CRITICAL: the packages typecheck clean at HEAD.
+ */
 export function runTypecheck(pkg, root) {
   const dir = join(root, pkg);
   const tsc = join(dir, 'node_modules', '.bin', 'tsc');
   if (!existsSync(join(dir, 'tsconfig.json'))) return { note: `typecheck ${pkg}: skipped (no tsconfig.json)`, findings: [] };
+  const project = existsSync(join(dir, 'tsconfig.test.json')) ? 'tsconfig.test.json' : 'tsconfig.json';
   if (!existsSync(tsc)) {
-    return { note: `typecheck ${pkg}: NOT RUN`, findings: [notRun(`${pkg}/tsconfig.json`, 'typecheck', `${pkg}/node_modules/.bin/tsc missing — install ${pkg} deps`)] };
+    return { note: `typecheck ${pkg}: NOT RUN`, findings: [notRun(`${pkg}/${project}`, 'typecheck', `${pkg}/node_modules/.bin/tsc missing — install ${pkg} deps`)] };
   }
   try {
-    execFileSync(tsc, ['--noEmit', '-p', 'tsconfig.json'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
+    execFileSync(tsc, ['--noEmit', '-p', project], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
     return { note: `typecheck ${pkg}: ok`, findings: [] };
   } catch (e) {
     const out = `${e.stdout ?? ''}${e.stderr ?? ''}`;
     const findings = parseTscOutput(out, pkg);
     if (findings.length) return { note: `typecheck ${pkg}: ${findings.length} error(s)`, findings };
-    return { note: `typecheck ${pkg}: NOT RUN`, findings: [notRun(`${pkg}/tsconfig.json`, 'typecheck', `tsc failed without diagnostics: ${out.trim().slice(0, 200)}`)] };
+    return { note: `typecheck ${pkg}: NOT RUN`, findings: [notRun(`${pkg}/${project}`, 'typecheck', `tsc failed without diagnostics: ${out.trim().slice(0, 200)}`)] };
   }
 }
 

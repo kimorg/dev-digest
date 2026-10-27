@@ -5,7 +5,8 @@
 #    agent-runner both run on. We deliberately do NOT matrix over Windows/macOS:
 #    macOS is covered by daily local dev, Windows is not a ship target, and
 #    `@ast-grep/napi` is exact-pinned so its native binary only changes on a
-#    deliberate version bump.
+#    deliberate version bump. It covers src/** + test/** through
+#    tsconfig.test.json (`build` keeps tsconfig.json, src only).
 #  - unit: the ~19 DB-free test files (everything that is NOT `*.it.test.ts`).
 #    LLM/git/embeddings are mocked via src/adapters/mocks.ts — no Docker.
 #
@@ -63,7 +64,8 @@ jobs:
         working-directory: reviewer-core
         run: npm ci
 
-      - run: pnpm typecheck
+      - name: Typecheck (src + test)
+        run: pnpm typecheck
 
   unit:
     name: tests

@@ -165,10 +165,11 @@ d('GET /agents/:id/versions', () => {
     });
 
     const service = new AgentsService({ db } as unknown as Container);
-    const [{ id: defaultWs }] = await db
+    const [defaultRow] = await db
       .select({ id: t.workspaces.id })
       .from(t.workspaces)
       .where(eq(t.workspaces.name, 'default'));
+    const defaultWs = defaultRow!.id;
 
     // Owner can read; a different workspace is denied (undefined → 404 at route).
     expect(await service.listVersions(otherWs!.id, foreign.id)).toHaveLength(1);
