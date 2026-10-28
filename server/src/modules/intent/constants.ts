@@ -16,5 +16,8 @@ export const INTENT_TIMEOUT_MS = 60_000;
 /** Bump to invalidate every stored intent (e.g. after a prompt rewrite). */
 export const INTENT_FINGERPRINT_VERSION = 1;
 
-/** Linked files are read only when they look like prose — never `.env`, configs or code. */
-export const DOC_EXTENSIONS = ['.md', '.mdx', '.txt'] as const;
+/**
+ * Linked files are read only when they look like prose or a spec — never `.env` or code.
+ * `.yaml`/`.yml`/`.json` cover OpenAPI and JSON-schema specs linked from a description.
+ */
+export const DOC_EXTENSIONS = ['.md', '.mdx', '.txt', '.yaml', '.yml', '.json'] as const;

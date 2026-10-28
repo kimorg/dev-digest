@@ -7,4 +7,5 @@ Agents read these on demand — add a line to the index below for every new doc.
 ## Index
 
 - [repo-intel](../src/modules/repo-intel/README.md) — indexer pipeline and facade (lives next to the code)
+- [Smart diff & intent](smart-diff.md) — role groups, split suggestion, linked docs in the intent layer
 - [Testing & CI strategy](../../TESTING.md)

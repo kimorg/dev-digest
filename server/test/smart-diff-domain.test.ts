@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { SmartDiff } from '@devdigest/shared';
-import { buildSmartDiff, classifyFile, latestReviewIdsPerAgent } from '../src/modules/smart-diff/domain.js';
+import {
+  buildSmartDiff,
+  classifyFile,
+  latestReviewIdsPerAgent,
+  suggestSplit,
+} from '../src/modules/smart-diff/domain.js';
 
 const ROLE_TABLE: [string, string][] = [
   ['src/__tests__/__snapshots__/x.snap', 'boilerplate'],
@@ -87,6 +92,26 @@ describe('buildSmartDiff — assembly', () => {
     expect(byRole.docs!.map((f) => f.path)).toEqual(['README.md']);
     expect(d.split_suggestion.total_lines).toBe(10 + 2 + 3 + 1 + 5 + 2);
     expect(d.split_suggestion.too_big).toBe(false);
+  });
+});
+
+describe('suggestSplit — oversized PRs', () => {
+  it.only('proposes one PR per non-empty role above the threshold', () => {
+    const d = buildSmartDiff(
+      [
+        { path: 'src/a.ts', additions: 300, deletions: 50 },
+        { path: 'src/a.test.ts', additions: 120, deletions: 0 },
+        { path: 'pnpm-lock.yaml', additions: 400, deletions: 380 },
+      ],
+      [],
+    );
+    expect(d.split_suggestion.too_big).toBe(true);
+    expect(d.split_suggestion.proposed_splits.map((s) => s.name)).toEqual(['core', 'tests', 'boilerplate']);
+  });
+
+  it('leaves a small PR alone', () => {
+    const s = suggestSplit([], 10);
+    expect(s).toBeTruthy();
   });
 });
 

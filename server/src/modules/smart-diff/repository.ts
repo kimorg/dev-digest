@@ -8,16 +8,14 @@ import type { FindingAnchor, ReviewHead, SmartDiffSourceFile } from './types.js'
 export class SmartDiffRepository implements SmartDiffStore {
   constructor(private db: Db) {}
 
+  /** One round trip: the PR's files joined to the PR row (no files → treated as not found). */
   async listFilesForPull(workspaceId: string, prId: string): Promise<SmartDiffSourceFile[] | undefined> {
-    const [pull] = await this.db
-      .select({ id: t.pullRequests.id })
-      .from(t.pullRequests)
-      .where(and(eq(t.pullRequests.workspaceId, workspaceId), eq(t.pullRequests.id, prId)));
-    if (!pull) return undefined;
-    return this.db
+    const rows = await this.db
       .select({ path: t.prFiles.path, additions: t.prFiles.additions, deletions: t.prFiles.deletions })
       .from(t.prFiles)
+      .innerJoin(t.pullRequests, eq(t.pullRequests.id, t.prFiles.prId))
       .where(eq(t.prFiles.prId, prId));
+    return rows.length > 0 ? rows : undefined;
   }
 
   async listReviewsForPull(prId: string): Promise<ReviewHead[]> {

@@ -45,3 +45,6 @@ export const ROLE_PATTERNS: Record<(typeof SMART_DIFF_CHECK_ORDER)[number], read
     /(^|\/)docs?\//, // docs/ doc/
   ],
 };
+
+/** A PR above this many changed lines (additions + deletions) gets a split suggestion. */
+export const SPLIT_THRESHOLD_LINES = 500;
