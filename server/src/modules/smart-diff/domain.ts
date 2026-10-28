@@ -1,5 +1,11 @@
+import groupBy from 'lodash/groupBy';
 import type { SmartDiff, SmartDiffGroup, SmartDiffRole } from '@devdigest/shared';
-import { ROLE_PATTERNS, SMART_DIFF_CHECK_ORDER, SMART_DIFF_DISPLAY_ORDER } from './constants.js';
+import {
+  ROLE_PATTERNS,
+  SMART_DIFF_CHECK_ORDER,
+  SMART_DIFF_DISPLAY_ORDER,
+  SPLIT_THRESHOLD_LINES,
+} from './constants.js';
 import type { FindingAnchor, ReviewHead, SmartDiffSourceFile } from './types.js';
 
 /** Role of a file by its path; first match in check order wins, `core` is the fallback. */
@@ -56,8 +62,30 @@ export function buildSmartDiff(
     });
   }
 
+  const ordered = SMART_DIFF_DISPLAY_ORDER.map((role) => groups.get(role)!);
   return {
-    groups: SMART_DIFF_DISPLAY_ORDER.map((role) => groups.get(role)!),
-    split_suggestion: { too_big: false, total_lines: totalLines, proposed_splits: [] },
+    groups: ordered,
+    split_suggestion: suggestSplit(ordered, totalLines),
+  };
+}
+
+/**
+ * Split suggestion for an oversized PR: one proposed PR per non-empty role group,
+ * so reviewers can take the core change, its tests and the wiring one at a time.
+ */
+export function suggestSplit(groups: readonly SmartDiffGroup[], totalLines: number): SmartDiff['split_suggestion'] {
+  const tooBig = totalLines > SPLIT_THRESHOLD_LINES;
+  if (!tooBig) return { too_big: false, total_lines: totalLines, proposed_splits: [] };
+  const byRole = groupBy(
+    groups.flatMap((g) => g.files.map((f) => ({ role: g.role, path: f.path }))),
+    (f) => f.role,
+  );
+  return {
+    too_big: true,
+    total_lines: totalLines,
+    proposed_splits: Object.entries(byRole).map(([role, files]) => ({
+      name: role,
+      files: files.map((f) => f.path),
+    })),
   };
 }

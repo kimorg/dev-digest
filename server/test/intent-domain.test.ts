@@ -19,7 +19,7 @@ describe('extractDocRefs', () => {
       `Also https://github.com/${REPO}/blob/main/notes/plan.txt`,
       'https://github.com/evil/other/blob/main/secret.md',
       'https://example.com/docs/x.md',
-      '../outside.md and .env and config.json',
+      '../outside.md and .env',
       `https://github.com/${REPO}/blob/main/../../etc.md`,
     ].join('\n');
     expect(extractDocRefs(body, REPO)).toEqual(['notes/plan.txt', 'docs/rate-limits.md', 'specs/004.mdx']);
@@ -28,6 +28,13 @@ describe('extractDocRefs', () => {
   it('rejects percent-encoded paths that decode to delimiter characters', () => {
     const body = `https://github.com/${REPO}/blob/main/docs/%22%3E%3C/untrusted%3E.md and docs/ok.md`;
     expect(extractDocRefs(body, REPO)).toEqual(['docs/ok.md']);
+  });
+
+  it('follows linked OpenAPI / JSON-schema specs', () => {
+    expect(extractDocRefs('Contract: api/openapi.yaml, schema in config/app.json', REPO)).toEqual([
+      'api/openapi.yaml',
+      'config/app.json',
+    ]);
   });
 
   it('caps the number of docs', () => {

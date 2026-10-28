@@ -22,7 +22,7 @@ const sha256 = (text: string): string => createHash('sha256').update(text).diges
 const GITHUB_BLOB_URL =
   /https?:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/(?:blob|tree)\/[^/\s)#?]+\/([^\s)#?"'<>\]]+)/gi;
 const ANY_URL = /https?:\/\/[^\s)<>\]"']+/gi;
-const RELATIVE_DOC = /(?<![\w/.:@-])((?:\.\/)?(?:[\w.@-]+\/)*[\w.@-]+\.(?:md|mdx|txt))(?![\w/-])/gi;
+const RELATIVE_DOC = /(?<![\w/.:@-])((?:\.\/)?(?:[\w.@-]+\/)*[\w.@-]+\.(?:md|mdx|txt|ya?ml|json))(?![\w/-])/gi;
 
 /** A clean repo-relative text-file path, or undefined (escapes, absolute, wrong extension). */
 function cleanDocPath(raw: string): string | undefined {
@@ -42,7 +42,7 @@ function cleanDocPath(raw: string): string | undefined {
 }
 
 /**
- * Repo-relative doc paths referenced by a PR description: relative `*.md|mdx|txt`
+ * Repo-relative doc paths referenced by a PR description: relative `*.md|mdx|txt|yaml|yml|json`
  * paths and same-repo github.com blob/tree URLs (reduced to the path). Foreign
  * repos/hosts, `..` escapes and non-text extensions are rejected. Capped.
  */
