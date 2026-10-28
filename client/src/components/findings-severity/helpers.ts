@@ -1,4 +1,4 @@
-import type { FindingRecord, FindingsCounts, ReviewRecord, Severity } from "@devdigest/shared";
+import type { FindingRecord, FindingsCounts, Severity } from "@devdigest/shared";
 import { POPOVER_EDGE, POPOVER_GAP, POPOVER_MAX_HEIGHT, POPOVER_WIDTH } from "./constants";
 
 /** Display order + the `FindingsCounts` key for each severity. */
@@ -25,18 +25,6 @@ export function sortBySeverity<T extends Pick<FindingRecord, "severity">>(findin
     return i === -1 ? SEVERITY_KEYS.length : i;
   };
   return [...findings].sort((x, y) => rank(x) - rank(y));
-}
-
-/** Each agent's latest review (input newest-first, as GET /pulls/:id/reviews returns it);
-    reviews without an agent form one group. Mirrors the PR list's FINDINGS counts. */
-export function latestReviewPerAgent(reviews: ReviewRecord[]): ReviewRecord[] {
-  const seen = new Set<string>();
-  return reviews.filter((r) => {
-    const key = r.agent_id ?? "";
-    if (r.kind !== "review" || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }
 
 /** Format a finding's line range ("11" when single-line, else "11-15"). */

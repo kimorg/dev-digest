@@ -32,7 +32,6 @@ function renderTab(props: Partial<React.ComponentProps<typeof FindingsTab>> = {}
         prCommits={[]}
         onOpenTrace={() => {}}
         onDelete={() => {}}
-        onRunDone={() => {}}
         {...props}
       />
     </NextIntlClientProvider>,

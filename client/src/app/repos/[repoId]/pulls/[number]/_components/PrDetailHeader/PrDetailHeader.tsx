@@ -5,7 +5,9 @@ import { useTranslations } from "next-intl";
 import { Icon, Avatar, Badge, Button, Tabs } from "@devdigest/ui";
 import { RunReviewDropdown } from "../RunReviewDropdown";
 import { STATUS_META } from "@/app/repos/[repoId]/pulls/constants";
+import { PR_HEADER_HEIGHT_VAR } from "./constants";
 import { isPrClosed } from "./helpers";
+import { usePublishHeight } from "./hooks/usePublishHeight";
 import { s } from "./styles";
 import type { PrDetail } from "@/lib/types";
 
@@ -34,9 +36,11 @@ export function PrDetailHeader({
   const t = useTranslations("prReview");
   const statusColor = (STATUS_META[pr.status] ?? STATUS_META.open)!.c;
   const closed = isPrClosed(pr.status);
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  usePublishHeight(rootRef, PR_HEADER_HEIGHT_VAR);
 
   return (
-    <div style={s.root}>
+    <div ref={rootRef} style={s.root}>
       <div style={s.titleRow}>
         <div style={s.titleCol}>
           <h1 style={s.h1}>

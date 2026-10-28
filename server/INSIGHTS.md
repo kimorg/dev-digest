@@ -73,6 +73,15 @@ returns 200. · **Evidence:** `server/src/modules/reviews/run-executor.ts:258`,
 `server/test/reviews.it.test.ts` (`runAndTrace`) · **Apply when:** adding work to the success path
 of a run, or writing a test or UI that reads a trace right after the run finishes.
 
+### 2026-10-28 — PR file lists stop at 100: `getPullRequest` calls `pulls.listFiles` once with `per_page: 100`
+**Context:** checking Smart Diff on this repo's PR #7 (105 files) in a real browser. · **Insight:** the
+Files changed tab said "100 files" and `+8959 −86` while the header said 105 files and `+9062 −101`. The
+GitHub adapter fetches one page of files with no pagination, `GET /pulls/:id` stores exactly that page in
+`pr_files`, and everything built on `pr_files` (Smart Diff groups, intent, review prompts) silently misses
+files 101+. Not fixed (pre-existing). · **Evidence:** `server/src/adapters/github/octokit.ts:79`,
+`server/src/modules/pulls/routes.ts:228` · **Apply when:** a feature needs every changed file of a large
+PR, or file/line totals disagree with `pull_requests.files_count`.
+
 ## Codebase Patterns
 
 _Conventions and architectural decisions (with the reason) that the code doesn't explain._
@@ -194,6 +203,15 @@ getter caches the instance (`this._prIntent ??= …`). Building a fresh `IntentS
 per run would silently allow duplicate model calls. · **Evidence:** `server/src/modules/intent/routes.ts:23`,
 `server/src/modules/intent/service.ts:43`, `server/src/platform/container.ts:129` · **Apply when:**
 changing intent triggers, adding a caller of intent, or refactoring the container getters.
+
+### 2026-10-28 — types shared by `domain.ts` and `ports.ts` go in the module's `types.ts`
+**Context:** plan 003 Smart Diff, `buildSmartDiff` (domain) and the `SmartDiffStore` port both need
+`SmartDiffSourceFile` / `ReviewHead` / `FindingAnchor`. · **Insight:** `domain.ts` is ring 1 and may not
+import `ports.ts` (ring 2, depcruise `domain-is-pure`). Declare the plain shapes in the module's
+`types.ts` (domain ring) and let `ports.ts` import them from there. The depcruise `--ignore-known`
+comparison reported 0 new violations with this layout. · **Evidence:** `server/src/modules/smart-diff/types.ts`,
+`server/src/modules/smart-diff/ports.ts:1`, `server/src/modules/smart-diff/domain.ts` · **Apply when:**
+a pure domain function and a port in the same module need the same input type.
 
 ## Tool & Library Notes
 
@@ -317,6 +335,7 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-27 — plan 001 typecheck of tests: `pnpm typecheck` now covers `server/test/**` via `tsconfig.test.json`
 - 2026-10-28 — plan 002 Intent Layer: PR intent is never generated on GET, and `container.prIntent` must stay one cached instance, `MockLLMProvider` reuses the `structured` fixture for every schema, so a run's intent step fails soft in tests
 - 2026-10-28 — plan 002 Revision 3 (drop risk areas): regenerating an uncommitted migration that is already applied locally needs a manual local rollback, run from the main thread
+- 2026-10-28 — plan 003 Smart Diff: PR file lists stop at 100: `getPullRequest` calls `pulls.listFiles` once with `per_page: 100`, types shared by `domain.ts` and `ports.ts` go in the module's `types.ts`
 
 ## Open Questions
 

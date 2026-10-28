@@ -137,6 +137,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
         .orderBy(desc(t.reviews.createdAt));
       // Rows are newest-first → first seen per PR (per PR + agent) is the latest review.
+      // Same rule as `latestReviewIdsPerAgent` (smart-diff/domain.ts) and the client's
+      // `lib/latest-review.ts`: change the three together.
       const seenAgents = new Set<string>();
       for (const rv of reviewRows) {
         if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { id: rv.id, score: rv.score });

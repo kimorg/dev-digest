@@ -22,7 +22,6 @@ interface FindingsTabProps {
   headSha?: string | null;
   onOpenTrace: (id: string) => void;
   onDelete: (id: string) => void;
-  onRunDone: () => void;
 }
 
 export function FindingsTab({
@@ -36,7 +35,6 @@ export function FindingsTab({
   headSha,
   onOpenTrace,
   onDelete,
-  onRunDone,
 }: FindingsTabProps) {
   const t = useTranslations("prReview");
   // review.run_id → its agent_runs row, so each VerdictBanner can show that run's cost.
@@ -95,7 +93,7 @@ export function FindingsTab({
           >
             {t("findingsTab.liveReview")}
           </SectionLabel>
-          <RunStatus runIds={liveRunIds} onDone={onRunDone} />
+          <RunStatus runIds={liveRunIds} />
         </div>
       )}
 

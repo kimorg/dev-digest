@@ -6,8 +6,9 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon } from "@devdigest/ui";
 import type { PrFile } from "@/lib/types";
-import { AUTO_EXPAND_MAX_LINES } from "../constants";
-import { parsePatch, type Line } from "../helpers";
+import { isAutoExpanded, parsePatch, type Line } from "../helpers";
+import { partitionAnnotations, type DiffAnnotation, type DiffAnnotationApi } from "../annotations";
+import { lineKey } from "../comments";
 import {
   buildThreads,
   keysForLine,
@@ -18,6 +19,7 @@ import {
 import { s, chevronFor } from "../styles";
 import { CodeLine } from "../CodeLine";
 import { OutdatedComments } from "../OutdatedComments";
+import { UnplacedAnnotations } from "../UnplacedAnnotations";
 import { UNSTYLED_BUTTON } from "@/lib/unstyled-button";
 
 /** Threads anchored to a given parsed line (RIGHT=new, LEFT=old). */
@@ -31,12 +33,40 @@ function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): Commen
   return out;
 }
 
-export function FileCard({ file, commenting }: { file: PrFile; commenting?: DiffCommentApi }) {
+/** Annotations anchored to a given parsed line (new-file side only). */
+function annotationsForLine(ln: Line, byKey: Map<string, DiffAnnotation[]>): DiffAnnotation[] {
+  if (byKey.size === 0 || (ln.kind !== "add" && ln.kind !== "ctx")) return [];
+  const key = lineKey("RIGHT", ln.newNo);
+  return (key && byKey.get(key)) || [];
+}
+
+interface FileCardProps {
+  file: PrFile;
+  commenting?: DiffCommentApi;
+  annotations?: DiffAnnotationApi;
+  /** Controlled expansion; without it the card manages its own state. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function FileCard({ file, commenting, annotations, open, onOpenChange }: FileCardProps) {
   const t = useTranslations("shell");
-  const [open, setOpen] = React.useState(
-    (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
-  );
+  const [internalOpen, setInternalOpen] = React.useState(isAutoExpanded(file));
+  const isOpen = open ?? internalOpen;
   const lines = React.useMemo(() => parsePatch(file.patch), [file.patch]);
+
+  const toggle = () => {
+    if (open === undefined) setInternalOpen(!isOpen);
+    onOpenChange?.(!isOpen);
+  };
+
+  const fileAnnotations = annotations?.forFile(file.path);
+  const renderedKeys = new Set<string>();
+  if (fileAnnotations && fileAnnotations.length > 0) {
+    for (const ln of lines) for (const k of keysForLine(ln)) renderedKeys.add(k);
+  }
+  const { byKey, unplaced } = partitionAnnotations(fileAnnotations ?? [], renderedKeys);
+  const isFlagged = !!fileAnnotations?.some((a) => a.mark);
 
   // Group this file's comments into threads, then split into ones we can anchor
   // to a rendered line vs. "outdated" (GitHub dropped the line / it's not here).
@@ -57,14 +87,17 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
     <div style={s.fileCard}>
       <button
         type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        aria-expanded={isOpen}
+        onClick={toggle}
         style={{ ...UNSTYLED_BUTTON, ...s.fileHeader }}
       >
-        <Icon.ChevronRight size={13} style={chevronFor(open)} />
+        <Icon.ChevronRight size={13} style={chevronFor(isOpen)} />
         <Icon.FileText size={14} style={s.fileIcon} />
-        <span className="mono" style={s.filePath}>
-          {file.path}
+        <span style={s.fileMain}>
+          <span className="mono" style={s.filePath}>
+            {file.path}
+          </span>
+          {isFlagged && <span role="img" aria-label={annotations?.flagLabel} style={s.fileDot} />}
         </span>
         <span className="mono tnum" style={s.fileStat}>
           <span style={s.addText}>+{file.additions}</span>{" "}
@@ -79,7 +112,7 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
           </span>
         )}
       </button>
-      {open && (
+      {isOpen && (
         <div style={s.fileBody}>
           {lines.length === 0 ? (
             <div style={s.noDiff}>{t("diffViewer.noDiffText")}</div>
@@ -91,10 +124,13 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
                 path={file.path}
                 threads={threadsForLine(ln, matched)}
                 commenting={commenting}
+                annotations={annotationsForLine(ln, byKey)}
+                showAnnotations={!!annotations?.show}
               />
             ))
           )}
           {commenting && commenting.showComments && <OutdatedComments threads={outdated} />}
+          {annotations?.show && <UnplacedAnnotations items={unplaced} title={annotations.unplacedTitle} />}
         </div>
       )}
     </div>

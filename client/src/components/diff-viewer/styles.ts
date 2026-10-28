@@ -19,14 +19,22 @@ export const s = {
     cursor: "pointer",
   } satisfies CSSProperties,
   fileIcon: { color: "var(--text-muted)" } satisfies CSSProperties,
+  /** Path + findings dot; takes the free space so the stat stays on the right. */
+  fileMain: { display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 } satisfies CSSProperties,
   filePath: {
     fontSize: 13,
     fontWeight: 500,
-    flex: 1,
     minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  } satisfies CSSProperties,
+  fileDot: {
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    background: "var(--crit)",
+    flexShrink: 0,
   } satisfies CSSProperties,
   fileStat: { fontSize: 12 } satisfies CSSProperties,
   addText: { color: "var(--code-add-text)" } satisfies CSSProperties,
@@ -81,7 +89,29 @@ export function lineRowFor(kind: Line["kind"]): CSSProperties {
   return { display: "flex", alignItems: "stretch", fontSize: 13, lineHeight: "20px", background };
 }
 
+/** Left bar (inset shadow) on an annotated line. */
+export function markRowFor(color: string): CSSProperties {
+  return { boxShadow: `inset 3px 0 0 ${color}` };
+}
+
+/** Label on the right of an annotated line. */
+export function markLabelFor(color: string): CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "center",
+    padding: "0 12px 0 8px",
+    fontSize: 12,
+    fontWeight: 500,
+    textTransform: "none",
+    color,
+    flexShrink: 0,
+  };
+}
+
 /** Gutter sign colour per line kind. */
+
 export function lineSignFor(kind: Line["kind"]): CSSProperties {
   return {
     width: 14,

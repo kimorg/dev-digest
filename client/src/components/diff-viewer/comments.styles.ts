@@ -48,6 +48,8 @@ export const cs = {
     color: "var(--text-secondary)",
     wordBreak: "break-word",
   } satisfies CSSProperties,
+  /** Annotation body (e.g. a finding card) under a line; same rail as threads. */
+  annotation: { margin: "6px 14px 8px 58px" } satisfies CSSProperties,
   composerActions: { display: "flex", gap: 8, alignItems: "center", marginTop: 8 } satisfies CSSProperties,
   hint: { fontSize: 11.5, color: "var(--text-muted)" } satisfies CSSProperties,
   outdatedWrap: {

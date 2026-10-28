@@ -11,6 +11,9 @@
     { "cmd": ["wait", "--text", "Files changed"], "label": "files changed tab renders" },
     { "cmd": ["find", "role", "button", "click", "--name", "Files changed"], "label": "switch to the Files changed tab" },
     { "cmd": ["wait", "--url", "tab=diff"], "label": "diff tab is active in the URL" },
-    { "cmd": ["wait", "--text", "src/config.ts"], "label": "a seeded changed file renders in the diff viewer" }
+    { "cmd": ["wait", "--text", "src/config.ts"], "label": "a seeded changed file renders in the diff viewer" },
+    { "cmd": ["wait", "--text", "Smart order"], "label": "smart order toggle renders" },
+    { "cmd": ["wait", "--text", "The substance of the change"], "label": "seeded files grouped as core (core group hint)" },
+    { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "seeded finding renders in the diff" }
   ]
 }

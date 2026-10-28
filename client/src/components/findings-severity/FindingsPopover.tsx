@@ -20,7 +20,8 @@ import {
 import type { FindingRecord, Severity } from "@devdigest/shared";
 import { usePrReviews } from "@/lib/hooks/reviews";
 import { findingBlobUrl } from "@/lib/github-urls";
-import { latestReviewPerAgent, lineLabel, pickFindings, plainText, placeUnder, type Placement } from "./helpers";
+import { latestReviewPerAgent } from "@/lib/latest-review";
+import { lineLabel, pickFindings, plainText, placeUnder, type Placement } from "./helpers";
 import { s } from "./FindingsPopover.styles";
 
 
