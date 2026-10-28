@@ -8,6 +8,7 @@
     { "cmd": ["wait", "--text", "Uncovered Branches"], "label": "seeded skill card is visible" },
     { "cmd": ["find", "text", "Uncovered Branches", "click"], "label": "open the seeded skill" },
     { "cmd": ["wait", "--url", "/skills/"], "label": "skill detail route reached" },
+    { "cmd": ["wait", "--text", "Preview"], "label": "skill detail tabs render" },
     { "cmd": ["find", "role", "button", "click", "--name", "Preview"], "label": "switch to the preview tab" },
     { "cmd": ["wait", "--text", "Rendered as the reviewing agent receives it."], "label": "rendered preview is visible" }
   ]
