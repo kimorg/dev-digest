@@ -47,6 +47,14 @@ leaves one card at the top of the list and removes the scroll from the step. · 
 `specs/08-skills.flow.json`, `client/src/app/skills/_components/SkillsView/SkillsView.tsx:103` ·
 **Apply when:** a flow clicks an item that sits below the fold in a scrolled panel.
 
+### 2026-10-28 — the runner now prints agent-browser's own output on a failed step
+**Context:** CI failures were undiagnosable from the log. · **Insight:** Supersedes: "reproduce
+CI e2e failures on a prod build with a stderr-logging wrapper" — the wrapper is no longer needed
+just to see the reason: `run.ts` prints the CLI's stderr/stdout (first 10 lines, `│`-prefixed)
+under a failed step, and the header shows the agent-browser version (CI installs the latest,
+unpinned). Building a prod copy of the client is still the way to reproduce CI timing. ·
+**Evidence:** `e2e/run.ts` (`runFlow` catch, `main`) · **Apply when:** reading a CI e2e failure.
+
 ## What Doesn't Work
 
 _Dead ends and anti-patterns — what was tried and why it failed. The most skipped section, and the most valuable._

@@ -81,6 +81,11 @@ async function runFlow(file: string, flow: Flow): Promise<FlowResult> {
       const msg = (e as Error).message.split("\n")[0];
       steps.push({ label, ok: false, detail: msg });
       console.log(`   ✗ ${label} — ${msg}`);
+      // execFile's message is only "Command failed: …" — the reason
+      // ("No element found…", "Names seen: …") is in the CLI's own output.
+      const { stdout = "", stderr = "" } = e as { stdout?: string; stderr?: string };
+      const output = `${stderr}\n${stdout}`.trim();
+      if (output) console.log(output.split("\n").slice(0, 10).map((l) => `     │ ${l}`).join("\n"));
       // Best-effort failure screenshot for the artifact upload.
       mkdirSync(RESULTS_DIR, { recursive: true });
       await ab(["screenshot", join(RESULTS_DIR, `${id}-fail.png`)]).catch(() => {});
@@ -93,7 +98,8 @@ async function runFlow(file: string, flow: Flow): Promise<FlowResult> {
 }
 
 async function main(): Promise<void> {
-  console.log(`DevDigest e2e — base=${BASE} bin=${BIN}`);
+  const version = (await ab(["--version"]).catch(() => "unknown")).trim();
+  console.log(`DevDigest e2e — base=${BASE} bin=${BIN} (${version})`);
   const flows = loadFlows();
   if (flows.length === 0) {
     console.error(`No specs found in ${SPECS_DIR}`);
