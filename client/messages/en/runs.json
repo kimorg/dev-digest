@@ -55,7 +55,8 @@
       "search": "Search in this block…",
       "noMatches": "No matches for “{q}”.",
       "tokens": "~{count, number} tok",
-      "skillRef": "{name} · v{version}"
+      "skillRef": "{name} · v{version}",
+      "intent": "PR intent (dynamic)"
     },
     "tools": {
       "args": "args",

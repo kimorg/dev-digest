@@ -125,6 +125,7 @@ export function countPromptTokens(
     callers: n(assembly.callers),
     repo_map: n(assembly.repo_map),
     pr_description: n(assembly.pr_description),
+    intent: n(assembly.intent),
     user: n(assembly.user),
   };
 }

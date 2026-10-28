@@ -22,7 +22,10 @@ const RunRequestBody = RunRequest.nullish().transform((b) => b ?? {});
 export default async function reviewsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const { container } = app;
-  const service = new ReviewService(container);
+  const service = new ReviewService(container, {
+    intents: container.prIntent,
+    countTokens: (text) => container.tokenizer.count(text),
+  });
 
   // ---- Run a review (manual trigger) -------------------------------
   // Tight per-route limit: each call can fan out to expensive LLM runs.

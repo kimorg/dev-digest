@@ -1,4 +1,4 @@
-import type { ChatMessage, PromptAssembly } from '@devdigest/shared';
+import type { ChatMessage, Intent, PromptAssembly } from '@devdigest/shared';
 
 /**
  * Prompt assembly + prompt-injection hardening.
@@ -30,7 +30,30 @@ export const INJECTION_GUARD =
 export function wrapUntrusted(label: string, content: string): string {
   // strip any attempt to close our own delimiter
   const safe = content.replaceAll('</untrusted>', '<\\/untrusted>');
-  return `<untrusted source="${label}">\n${safe}\n</untrusted>`;
+  // a label can never close the source="…" attribute or the tag
+  const safeLabel = label.replace(/[^\w.\/@#:-]/g, '_');
+  return `<untrusted source="${safeLabel}">\n${safe}\n</untrusted>`;
+}
+
+/**
+ * Trusted rule that goes with the `## PR intent` block: the model tags each
+ * finding. It never lowers a finding's severity — the filter is applied
+ * downstream and keeps serious ones (see review/scope.ts).
+ */
+export const INTENT_SCOPE_RULE =
+  'Set `in_scope: false` on a finding ONLY if the issue is unrelated to what this PR sets out ' +
+  'to change (per the intent below); otherwise set `in_scope: true`. Still report every real ' +
+  'defect with its true severity.';
+
+/** Render an Intent as plain text (the caller wraps it as untrusted). */
+export function renderIntent(intent: Intent): string {
+  const list = (items: string[]) =>
+    items.length > 0 ? items.map((i) => `- ${i}`).join('\n') : '- (none)';
+  return [
+    `Intent: ${intent.intent}`,
+    `In scope:\n${list(intent.in_scope)}`,
+    `Out of scope:\n${list(intent.out_of_scope)}`,
+  ].join('\n\n');
 }
 
 /** Cap the PR description so a huge author body can't blow the token budget. */
@@ -66,6 +89,12 @@ export interface PromptParts {
    * undefined → section omitted.
    */
   prDescription?: string;
+  /**
+   * Derived PR intent (untrusted — derived from author-controlled text).
+   * Rendered after the PR description with the trusted `in_scope` tagging rule.
+   * Undefined → section omitted (prompt unchanged).
+   */
+  intent?: Intent;
   /** The unified diff / user task (untrusted content). */
   diff: string;
   /** Optional task framing line, e.g. "Review PR #482 '…'". */
@@ -106,6 +135,10 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
   if (prDescription) {
     userSections.push(`## PR description\n${wrapUntrusted('pr-description', prDescription)}`);
   }
+  const intentBlock = parts.intent
+    ? `## PR intent\n${INTENT_SCOPE_RULE}\n${wrapUntrusted('pr-intent', renderIntent(parts.intent))}`
+    : undefined;
+  if (intentBlock) userSections.push(intentBlock);
   if (skillsBlock) userSections.push(`## Skills / rules\n${skillsBlock}`);
   if (memoryBlock) userSections.push(`## Relevant memory\n${memoryBlock}`);
   if (parts.repoMap && parts.repoMap.trim().length > 0) {
@@ -134,6 +167,7 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
     callers: parts.callers ?? null,
     repo_map: parts.repoMap ?? null,
     pr_description: prDescription ?? null,
+    intent: intentBlock ?? null,
     user,
   };
 

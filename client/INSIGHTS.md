@@ -259,6 +259,14 @@ or put text and icon in an `inline-flex` container. Verified with a headless-Chr
 **Evidence:** `client/src/app/repos/[repoId]/conventions/_components/ConventionCard/styles.ts` (`linkIcon`),
 `client/src/app/globals.css:2` · **Apply when:** putting an icon inline with text outside a flex container.
 
+### 2026-10-28 — `@testing-library/user-event` is not installed: component tests use `fireEvent`
+**Context:** plan 002, IntentCard tests (the RTL skill and the plan asked for `userEvent`). · **Insight:**
+`client/package.json` has no `@testing-library/user-event`, and ~30 existing test files use
+`fireEvent`. Importing `userEvent` fails module resolution. Use `fireEvent` unless the user approves
+adding the dependency. · **Evidence:** `client/package.json`,
+`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/IntentCard/IntentCard.test.tsx` ·
+**Apply when:** writing a client component test or a plan that prescribes `userEvent`.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -301,6 +309,7 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-18 — dark select dropdown: native `<select>` popups follow `color-scheme`, not the theme tokens
 - 2026-10-18 — L02 Conventions page: testing a whole page view in vitest: stub `AppShell` + repo context, pin `now` on the intl provider
 - 2026-10-18 — Conventions evidence → GitHub link: an `Icon.*` inside running text breaks onto its own line: Tailwind's preflight makes `svg` a block
+- 2026-10-28 — plan 002 Intent Layer: `@testing-library/user-event` is not installed: component tests use `fireEvent`
 
 ## Open Questions
 

@@ -184,6 +184,17 @@ has no eslint/prettier/tsconfig (they live per package), so a real scan sent onl
 `server/src/modules/conventions/service.ts` (`collectSamples`) · **Apply when:** sampling repo files for a
 model, or testing code that reads optional files through the git port.
 
+### 2026-10-28 — PR intent is never generated on GET, and `container.prIntent` must stay one cached instance
+**Context:** plan 002 Intent Layer. · **Insight:** the user explicitly excluded generating intent when
+the PR Overview opens. `GET /pulls/:id/intent` calls `IntentService.get`, which only reads the stored
+row and reports `stale` (fingerprint = title, body, head_sha, linked docs, provider + model). The model
+is called only from `ensure()`, i.e. review-run start and `POST /pulls/:id/intent/recalculate`.
+`ensure()` single-flights per PR through an in-memory `Map` on the service instance, so the container
+getter caches the instance (`this._prIntent ??= …`). Building a fresh `IntentService` per request or
+per run would silently allow duplicate model calls. · **Evidence:** `server/src/modules/intent/routes.ts:23`,
+`server/src/modules/intent/service.ts:43`, `server/src/platform/container.ts:129` · **Apply when:**
+changing intent triggers, adding a caller of intent, or refactoring the container getters.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -261,6 +272,27 @@ the config's directory) — keep ad-hoc configs inside the package ·
 `.claude/hooks/test-writer-verify.mjs` · **Apply when:** adding a test-only directory or a new
 tsc invocation in a script/hook — point it at `tsconfig.test.json`, not `tsconfig.json`.
 
+### 2026-10-28 — `MockLLMProvider` reuses the `structured` fixture for every schema, so a run's intent step fails soft in tests
+**Context:** plan 002, review runs now make an extra structured call (`schemaName: 'Intent'`) before the
+agent call. · **Insight:** the mock returns `structuredBySchema[schemaName] ?? structured`, so a test that
+sets only the review fixture feeds that review JSON to the `Intent` schema. The parse fails, the run
+logs "intent unavailable" and continues without intent, so the test passes while no intent reached the
+prompt. A test that wants intent in the run must pass `structuredBySchema: { Intent: … }`. ·
+**Evidence:** `server/src/adapters/mocks.ts:91`, `server/test/reviews.it.test.ts` · **Apply when:**
+writing a run test that asserts on intent, the scope filter, or `MockLLMProvider.calls` counts.
+
+### 2026-10-28 — regenerating an uncommitted migration that is already applied locally needs a manual local rollback, run from the main thread
+**Context:** plan 002 Revision 3 removed a column from the not-yet-committed `0015`. · **Insight:**
+the clean path is: `git checkout -- server/src/db/migrations/meta/_journal.json`, delete the untracked
+`0015_*.sql` and `meta/0015_snapshot.json`, then `pnpm db:generate --name …` (no hand-editing). The local
+dev DB still has the old columns and a `drizzle.__drizzle_migrations` row for the old `0015`, so
+`db:migrate` would skip the new file. Drop the old columns and delete that row in one transaction, then
+`pnpm db:migrate` applies the regenerated file (verified: new row id 20). The `implementer-guard` hook
+blocks the implementer from `git checkout` and any shell command touching `src/db/migrations`, so these
+steps run in the main thread with the user's OK. · **Evidence:** `server/src/db/migrations/0015_pr_intent_fingerprint.sql`,
+`server/src/db/migrations/meta/_journal.json` · **Apply when:** changing a schema whose generated migration
+is uncommitted but already migrated locally.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -283,6 +315,8 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-18 — fix depcruise CRITICALs in skills/reviews: a new module only passes the onion rules if its repository returns contract DTOs
 - 2026-10-18 — L02 Conventions Extractor: a synchronous model call of ~70 s is fine end to end: no client or server request timeout, a module that needs another module's function gets it through a `types.ts` facade on the container, `getConventionSamples` filters configs out; tests' `MockGitClient` returns `''`, not ENOENT, `pnpm db:generate` hangs silently when a change drops a column and adds others in the same table
 - 2026-10-27 — plan 001 typecheck of tests: `pnpm typecheck` now covers `server/test/**` via `tsconfig.test.json`
+- 2026-10-28 — plan 002 Intent Layer: PR intent is never generated on GET, and `container.prIntent` must stay one cached instance, `MockLLMProvider` reuses the `structured` fixture for every schema, so a run's intent step fails soft in tests
+- 2026-10-28 — plan 002 Revision 3 (drop risk areas): regenerating an uncommitted migration that is already applied locally needs a manual local rollback, run from the main thread
 
 ## Open Questions
 

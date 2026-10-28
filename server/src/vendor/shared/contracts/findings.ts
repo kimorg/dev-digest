@@ -56,6 +56,8 @@ export const Finding = z.object({
   suggestion: z.string().nullish(), // markdown
   confidence: z.number().min(0).max(1),
   kind: FindingKind.nullish(),
+  /** Set by the review model when a PR intent is in the prompt; false = unrelated to the PR's scope. */
+  in_scope: z.boolean().nullish(),
   // Lethal-trifecta variant fields (present only when kind === 'lethal_trifecta')
   trifecta_components: z.array(TrifectaComponent).nullish(),
   evidence: z.array(TrifectaEvidence).nullish(),

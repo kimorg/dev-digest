@@ -1,6 +1,12 @@
 import type { CSSProperties } from "react";
 
 export const s = {
+  briefRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: 16,
+    marginBottom: 20,
+  } satisfies CSSProperties,
   descriptionBox: {
     border: "1px solid var(--border)",
     borderRadius: 8,

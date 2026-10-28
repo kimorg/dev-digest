@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { taskLine } from '../src/modules/reviews/helpers.js';
+import { countPromptTokens, taskLine } from '../src/modules/reviews/helpers.js';
 
 /**
  * Unit coverage for the review task-line. The key invariant: our trusted
@@ -20,5 +20,15 @@ describe('taskLine', () => {
     const line = taskLine(pull);
     expect(line).toMatch(/never .*withhold .*(or downgrade )?.*security/i);
     expect(line).toMatch(/review the entire diff/i);
+  });
+});
+
+describe('countPromptTokens', () => {
+  it('counts the intent slot; null when the slot is absent', () => {
+    const count = (t: string) => t.length;
+    const base = { system: 'sys', user: 'user' };
+    expect(countPromptTokens({ ...base, intent: 'abcde' }, count).intent).toBe(5);
+    expect(countPromptTokens({ ...base, intent: null }, count).intent).toBeNull();
+    expect(countPromptTokens(base, count).intent).toBeNull();
   });
 });

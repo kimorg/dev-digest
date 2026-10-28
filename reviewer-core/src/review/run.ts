@@ -1,5 +1,6 @@
 import type {
   Finding,
+  Intent,
   LLMProvider,
   PromptAssembly,
   Review,
@@ -10,6 +11,7 @@ import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
+import { applyScopeFilter, type ScopeResult } from './scope.js';
 
 /**
  * reviewPullRequest — the review engine entry point.
@@ -71,6 +73,13 @@ export interface ReviewInput {
   /** PR author's description/body (untrusted; truncated + delimiter-wrapped in
       the prompt). Empty/undefined → section omitted. */
   prDescription?: string;
+  /** Derived PR intent (untrusted; rendered as its own wrapped prompt section). */
+  intent?: Intent;
+  /**
+   * Apply the out-of-scope filter after grounding (default false). Only takes
+   * effect together with `intent`; the caller decides (e.g. off at low confidence).
+   */
+  scopeFilter?: boolean;
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
   /** Override the structured-output retry budget. */
@@ -99,6 +108,8 @@ export interface ReviewOutcome {
   grounding: string;
   /** Findings dropped by grounding, with reasons (for logs / "never go silent"). */
   dropped: { finding: Finding; reason: string }[];
+  /** Scope-filter result; null when the filter did not run. */
+  scope: ScopeResult | null;
   /** Which path ran. */
   mode: ReviewMode;
   /** Prompt assembly (for the run trace). Single-pass: the one call; map-reduce: the whole-diff assembly. */
@@ -135,6 +146,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     callers: input.callers,
     repoMap: input.repoMap,
     prDescription: input.prDescription,
+    intent: input.intent,
     task: input.task,
   };
 
@@ -201,13 +213,32 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   }
   emit('result', `Citation grounding: ${grounding}`);
 
-  // Score is derived from the findings that SURVIVED grounding (not the model's
-  // self-reported number, and not the pre-grounding set) so the score, the
-  // findings list, and the deterministic event always agree.
+  // Scope filter runs AFTER grounding (a hallucinated location is dropped first),
+  // and only when an intent exists and the caller enabled it.
+  const scope =
+    input.intent && input.scopeFilter === true ? applyScopeFilter(ground.kept) : null;
+  if (scope) {
+    for (const d of scope.filtered) {
+      emit('info', `scope filter dropped "${d.finding.title}": ${d.reason}`);
+    }
+    if (scope.signal) {
+      emit(
+        'info',
+        `scope filter kept 1 serious out-of-scope signal "${scope.signal.title}"` +
+          (scope.collapsed > 0 ? ` (+${scope.collapsed} more collapsed)` : ''),
+      );
+    }
+  }
+  const finalFindings = scope ? scope.kept : ground.kept;
+
+  // Score is derived from the findings that SURVIVED grounding (and the scope
+  // filter) — not the model's self-reported number — so the score, the findings
+  // list, and the deterministic event always agree.
   return {
-    review: { ...merged, findings: ground.kept, score: scoreFromFindings(ground.kept) },
+    review: { ...merged, findings: finalFindings, score: scoreFromFindings(finalFindings) },
     grounding,
     dropped: ground.dropped,
+    scope,
     mode,
     assembly,
     chunks: chunks.map((c) => ({ label: c.label })),

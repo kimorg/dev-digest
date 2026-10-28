@@ -203,6 +203,10 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(trace.config.model).toBe('gpt-4.1');
     expect(trace.stats.grounding).toBe('1/2 passed');
     expect(trace.log.length).toBeGreaterThan(0);
+    // No `Intent` fixture → the intent step fails soft: the run still succeeds,
+    // the trace records the failure and the prompt has no intent block.
+    expect(trace.intent.status).toBe('failed');
+    expect(trace.prompt_assembly.intent ?? null).toBeNull();
 
     // agent_runs row populated for A5 to aggregate
     const [run] = await pg.handle.db.select().from(t.agentRuns).where(eq(t.agentRuns.id, runId));
@@ -215,6 +219,80 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(trace.stats.cost_usd).toBeCloseTo(0.001);
     const runs = (await app.inject({ method: 'GET', url: `/pulls/${pr.id}/runs` })).json();
     expect(runs[0].cost_usd).toBeCloseTo(0.001);
+
+    await app.close();
+  });
+
+  it('intent: block in the prompt, scope filter drops out-of-scope findings, trace records it', async () => {
+    const IntentFixture = {
+      intent: 'Add rate limiting to public endpoints',
+      in_scope: ['limiter'],
+      out_of_scope: ['config cleanup'],
+    };
+    const finding = (id: string, over: Record<string, unknown>) => ({
+      id,
+      severity: 'WARNING',
+      category: 'bug',
+      title: id,
+      file: 'src/config.ts',
+      start_line: 11,
+      end_line: 11,
+      rationale: 'r',
+      confidence: 0.5,
+      kind: 'finding',
+      ...over,
+    });
+    const llm = new MockLLMProvider('openai', {
+      structuredBySchema: {
+        Intent: IntentFixture,
+        Review: {
+          verdict: 'comment',
+          summary: 's',
+          score: 50,
+          findings: [finding('f-in', { severity: 'CRITICAL', category: 'security', in_scope: true }), finding('f-out', { in_scope: false })],
+        },
+      },
+    });
+    const app = await buildApp({
+      config: config(),
+      db: pg.handle.db,
+      overrides: { embedder: new MockEmbedder(), git: new MockGitClient({ diff: DIFF }), llm: { openai: llm } },
+    });
+    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+    // A real description → medium confidence (the linked issue can't be fetched without a token).
+    await pg.handle.db
+      .update(t.pullRequests)
+      .set({ body: 'Add rate limiting to the public API so unauthenticated clients cannot hammer the endpoints. Closes #471.' })
+      .where(eq(t.pullRequests.id, pr.id));
+    const agent = (
+      await app.inject({
+        method: 'POST',
+        url: '/agents',
+        payload: { name: 'Sec2', provider: 'openai', model: 'gpt-4.1', system_prompt: 'sec' },
+      })
+    ).json();
+
+    const res = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
+    const runId = res.json().runs[0].run_id;
+    await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+
+    const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
+    expect(trace.intent.status).toBe('regenerated');
+    expect(trace.intent.confidence).toBe('medium');
+    expect(trace.intent.scope_filter).toBe('applied');
+    expect(trace.intent.filtered_out).toBe(1);
+    expect(trace.intent.diff_tokens).toBeGreaterThan(0);
+    expect(trace.prompt_assembly.intent).toContain('Add rate limiting to public endpoints');
+    expect(trace.prompt_assembly.tokens.intent).toBeGreaterThan(0);
+    const reviews = (await app.inject({ method: 'GET', url: `/pulls/${pr.id}/reviews` })).json();
+    expect(reviews[0].findings.map((f: { title: string }) => f.title)).toEqual(['f-in']);
+    // 1 Intent call + 1 Review call
+    expect(llm.calls.filter((c) => c.method === 'completeStructured')).toHaveLength(2);
+
+    // A second run on the unchanged PR reuses the stored intent (no extra Intent call).
+    await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
+    await waitForPrRuns(pg.handle.db, pr.id, { expected: 2 });
+    expect(llm.calls.filter((c) => c.method === 'completeStructured')).toHaveLength(3);
 
     await app.close();
   });

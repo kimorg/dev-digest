@@ -69,6 +69,8 @@ export function useRefreshPrRuns(prId: string | null | undefined) {
     qc.invalidateQueries({ queryKey: queryKeys.prActiveRuns(prId) });
     qc.invalidateQueries({ queryKey: queryKeys.prRuns(prId) });
     qc.invalidateQueries({ queryKey: queryKeys.prReviews(prId) });
+    // A run (re)detects the PR intent server-side, so the Overview card is stale.
+    qc.invalidateQueries({ queryKey: queryKeys.prIntent(prId) });
   }, [qc, prId]);
 }
 

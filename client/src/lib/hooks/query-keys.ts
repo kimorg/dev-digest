@@ -33,5 +33,6 @@ export const queryKeys = {
   prRuns: (prId: string | null | undefined) => ["pr-runs", prId] as const,
   prReviews: (prId: string | null | undefined) => ["pr-reviews", prId] as const,
   prComments: (prId: string | null | undefined) => ["pr-comments", prId] as const,
+  prIntent: (prId: string | null | undefined) => ["pr-intent", prId] as const,
   runTrace: (runId: string | null | undefined) => ["run-trace", runId] as const,
 };

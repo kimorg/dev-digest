@@ -135,4 +135,50 @@ describe('reviewPullRequest (engine)', () => {
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((s) => s === 'sess-abc')).toBe(true);
   });
+
+  describe('scope filter', () => {
+    const intent = { intent: 'x', in_scope: [], out_of_scope: [] };
+    const scoped = {
+      verdict: 'comment',
+      summary: 's',
+      score: 50,
+      findings: [
+        { ...fixture.findings[1]!, id: 'ground-drop', in_scope: false },
+        {
+          id: 'oos',
+          severity: 'WARNING',
+          category: 'bug',
+          title: 'unrelated',
+          file: 'src/config.ts',
+          start_line: 11,
+          end_line: 11,
+          rationale: 'r',
+          confidence: 0.5,
+          kind: 'finding',
+          in_scope: false,
+        },
+      ],
+    };
+
+    it('runs after grounding and recomputes the score from survivors', async () => {
+      const llm = new MockLLMProvider('openai', { structured: scoped });
+      const diff = await new MockGitClient().diff();
+      const o = await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm, intent, scopeFilter: true });
+      expect(o.dropped.map((d) => d.finding.id)).toEqual(['ground-drop']);
+      expect(o.scope?.filtered.map((d) => d.finding.id)).toEqual(['oos']);
+      expect(o.review.findings).toHaveLength(0);
+      expect(o.review.score).toBe(100);
+    });
+
+    it('does not filter without scopeFilter or without an intent', async () => {
+      const llm = new MockLLMProvider('openai', { structured: scoped });
+      const diff = await new MockGitClient().diff();
+      const off = await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm, intent, scopeFilter: false });
+      expect(off.scope).toBeNull();
+      expect(off.review.findings).toHaveLength(1);
+      const none = await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm, scopeFilter: true });
+      expect(none.scope).toBeNull();
+      expect(none.review.findings).toHaveLength(1);
+    });
+  });
 });

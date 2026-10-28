@@ -1,5 +1,5 @@
 import type { Container } from '../../platform/container.js';
-import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type { PrIntentRecord, Provider, Review, RunIntentTrace, RunTrace, UnifiedDiff } from '@devdigest/shared';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
@@ -8,6 +8,7 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { countPromptTokens, renderSkillBlock, taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+import type { IntentUsage, PrIntents } from '../intent/types.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -24,6 +25,17 @@ export type Logger = {
   error: (obj: unknown, msg?: string) => void;
   debug: (obj: unknown, msg?: string) => void;
 };
+
+/** What the intent step produced for this run (shared by every agent of the run). */
+type IntentRun =
+  | { status: 'failed'; error: string; diffTokens: number | null }
+  | {
+      status: 'regenerated' | 'reused';
+      intent: PrIntentRecord;
+      usage: IntentUsage | null;
+      scopeFilter: boolean;
+      diffTokens: number | null;
+    };
 
 // A reduced "Review per file" — same schema as Review (the model returns a small
 // Review per file; we merge findings + take the worst verdict / mean score).
@@ -45,6 +57,8 @@ export class ReviewRunExecutor {
     private container: Container,
     private repo: ReviewRepository,
     private agents: Container['agentsRepo'],
+    private intents: PrIntents,
+    private countTokens: (text: string) => number,
   ) {}
 
   /**
@@ -104,6 +118,9 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
+    // PR intent (fail-soft): a failure only means the review runs without it.
+    const intentRun = await this.resolveIntent(workspaceId, pull, diff, runLog);
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -111,7 +128,7 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
+        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog, intentRun);
         logger?.info(
           {
             runId,
@@ -143,6 +160,7 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
+    intentRun: IntentRun,
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -215,6 +233,18 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // PR intent — untrusted block in the prompt; the out-of-scope filter is
+        // skipped at low confidence (too little evidence to drop findings on).
+        ...(intentRun.status !== 'failed'
+          ? {
+              intent: {
+                intent: intentRun.intent.intent,
+                in_scope: intentRun.intent.in_scope,
+                out_of_scope: intentRun.intent.out_of_scope,
+              },
+              scopeFilter: intentRun.scopeFilter,
+            }
+          : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
@@ -310,6 +340,7 @@ export class ReviewRunExecutor {
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
+        intent: this.intentTrace(intentRun, outcome.scope),
       };
       runLog.info('Run complete; trace persisted');
       await this.repo.saveRunTrace(runId, trace);
@@ -340,6 +371,70 @@ export class ReviewRunExecutor {
       this.container.runBus.complete(runId);
       throw err;
     }
+  }
+
+  /**
+   * Resolve the PR intent once per run (shared by every agent): reuse the stored
+   * one when the PR is unchanged, regenerate otherwise. Never throws.
+   */
+  private async resolveIntent(
+    workspaceId: string,
+    pull: PullRow,
+    diff: UnifiedDiff,
+    runLog: RunLogger,
+  ): Promise<IntentRun> {
+    let diffTokens: number | null = null;
+    try {
+      diffTokens = this.countTokens(diff.raw);
+    } catch {
+      /* ratio is informational only */
+    }
+    try {
+      const { result, usage, scopeFilter } = await runLog.step(
+        'Resolving PR intent',
+        () => this.intents.ensure(workspaceId, pull.id),
+        { kind: 'tool' },
+      );
+      const status = result.regenerated ? 'regenerated' : 'reused';
+      const { intent } = result;
+      const scope = scopeFilter ? 'applied' : 'skipped (low confidence)';
+      const spent = usage
+        ? `${usage.tokensIn}/${usage.tokensOut} tokens in/out vs diff ${diffTokens ?? '?'} tokens` +
+          (diffTokens ? ` (${Math.round(((usage.tokensIn + usage.tokensOut) / diffTokens) * 100)}%)` : '')
+        : 'no model call';
+      runLog.info(
+        `Intent ${status} · ${intent.provider ?? '?'}/${intent.model ?? '?'} · ${spent} · confidence ${intent.confidence} · scope filter ${scope}`,
+      );
+      return { status, intent, scopeFilter, usage, diffTokens };
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      runLog.info(`intent unavailable — reviewing without scope filter: ${error}`);
+      return { status: 'failed', diffTokens, error };
+    }
+  }
+
+  /** The run trace's `intent` block. */
+  private intentTrace(
+    intentRun: IntentRun,
+    scope: { filtered: unknown[]; signal: unknown } | null,
+  ): RunIntentTrace {
+    if (intentRun.status === 'failed') {
+      return { status: 'failed', diff_tokens: intentRun.diffTokens, error: intentRun.error };
+    }
+    return {
+      status: intentRun.status,
+      provider: intentRun.intent.provider,
+      model: intentRun.intent.model,
+      tokens_in: intentRun.usage?.tokensIn ?? null,
+      tokens_out: intentRun.usage?.tokensOut ?? null,
+      cost_usd: intentRun.usage?.costUsd ?? null,
+      diff_tokens: intentRun.diffTokens,
+      confidence: intentRun.intent.confidence,
+      scope_filter: intentRun.scopeFilter ? 'applied' : 'skipped_low_confidence',
+      filtered_out: scope?.filtered.length ?? 0,
+      out_of_scope_signal: !!scope?.signal,
+      error: null,
+    };
   }
 
   /**
