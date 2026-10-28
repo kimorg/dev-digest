@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
-import { waitForPrRuns } from './helpers/runs.js';
+import { waitForPrRuns, waitForRunTrace } from './helpers/runs.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
@@ -199,7 +199,7 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
 
     // a run_traces document was written (single doc)
     const runId = body.runs[0].run_id;
-    const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
+    const trace = await waitForRunTrace(app, runId);
     expect(trace.config.model).toBe('gpt-4.1');
     expect(trace.stats.grounding).toBe('1/2 passed');
     expect(trace.log.length).toBeGreaterThan(0);
@@ -276,7 +276,7 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     const runId = res.json().runs[0].run_id;
     await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
 
-    const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
+    const trace = await waitForRunTrace(app, runId);
     expect(trace.intent.status).toBe('regenerated');
     expect(trace.intent.confidence).toBe('medium');
     expect(trace.intent.scope_filter).toBe('applied');
@@ -324,13 +324,7 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
         await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } })
       ).json().runs[0].run_id;
       await waitForPrRuns(pg.handle.db, pr.id, { expected: n });
-      // The run is marked `done` just before its trace is written — poll the trace itself.
-      for (let i = 0; i < 200; i++) {
-        const res = await app.inject({ method: 'GET', url: `/runs/${runId}/trace` });
-        if (res.statusCode === 200) return res.json();
-        await new Promise((r) => setTimeout(r, 25));
-      }
-      throw new Error(`trace of run ${runId} was never written`);
+      return waitForRunTrace(app, runId);
     };
     const link = (ids: string[]) =>
       app.inject({ method: 'POST', url: `/agents/${agent.id}/skills`, payload: { skill_ids: ids } });
