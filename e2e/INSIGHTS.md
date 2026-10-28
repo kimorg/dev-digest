@@ -37,6 +37,16 @@ dev server's `.next` is untouched. CI also uploads `e2e-failure` screenshots
 `.github/workflows/e2e-web.yml:122` · **Apply when:** an e2e step fails in CI and the log says
 only "Command failed".
 
+### 2026-10-28 — filter a list with its search box before clicking a below-the-fold card
+**Context:** flow 08 clicked "Uncovered Branches" (last of 7 skills, `top≈1080` in a 1280×577
+viewport, inside the list's own scroll container). · **Insight:** locally `find text … click`
+scrolled to it and navigated, but in CI the click exited 0 with no navigation and the failure
+screenshot showed the list still scrolled to the top. Exact cause unconfirmed (not reproducible
+locally); filling the search first (`find label "Search skills…" fill "Uncovered Branches"`)
+leaves one card at the top of the list and removes the scroll from the step. · **Evidence:**
+`specs/08-skills.flow.json`, `client/src/app/skills/_components/SkillsView/SkillsView.tsx:103` ·
+**Apply when:** a flow clicks an item that sits below the fold in a scrolled panel.
+
 ## What Doesn't Work
 
 _Dead ends and anti-patterns — what was tried and why it failed. The most skipped section, and the most valuable._

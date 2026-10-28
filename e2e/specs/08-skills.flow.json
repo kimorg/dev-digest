@@ -6,6 +6,8 @@
     { "cmd": ["wait", "--url", "/skills"], "label": "skills route reached" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "skills fetch settles" },
     { "cmd": ["wait", "--text", "Uncovered Branches"], "label": "seeded skill card is visible" },
+    { "cmd": ["find", "label", "Search skills…", "fill", "Uncovered Branches"], "label": "filter the list to the seeded skill (its card is below the fold)" },
+    { "cmd": ["wait", "--text", "Uncovered Branches"], "label": "filtered skill card is visible" },
     { "cmd": ["find", "text", "Uncovered Branches", "click"], "label": "open the seeded skill" },
     { "cmd": ["wait", "--url", "/skills/"], "label": "skill detail route reached" },
     { "cmd": ["wait", "--text", "Preview"], "label": "skill detail tabs render" },
