@@ -25,6 +25,36 @@ Entry format:
 
 _Approaches and solutions that worked and are worth repeating._
 
+### 2026-10-28 — reproduce CI e2e failures on a prod build with a stderr-logging wrapper
+**Context:** PR #7 e2e failed in CI with only `Command failed: agent-browser …` in the log. ·
+**Insight:** `run.ts` swallows agent-browser's stderr, so point `AGENT_BROWSER_BIN` at a wrapper
+script that appends `$*`, exit code and output to a log — the real reason ("No element found…",
+"Names seen: …") is there. `scripts/e2e.sh` runs `next dev`, whose on-demand compiles produce
+different races than CI's `next build && next start`; to match CI, copy `client/` (minus
+`node_modules`/`.next`, with `node_modules` symlinked) to a scratch dir and build there, so the
+dev server's `.next` is untouched. CI also uploads `e2e-failure` screenshots
+(`gh run download <id>`). · **Evidence:** `e2e/run.ts:44`, `scripts/e2e.sh:69`,
+`.github/workflows/e2e-web.yml:122` · **Apply when:** an e2e step fails in CI and the log says
+only "Command failed".
+
+### 2026-10-28 — filter a list with its search box before clicking a below-the-fold card
+**Context:** flow 08 clicked "Uncovered Branches" (last of 7 skills, `top≈1080` in a 1280×577
+viewport, inside the list's own scroll container). · **Insight:** locally `find text … click`
+scrolled to it and navigated, but in CI the click exited 0 with no navigation and the failure
+screenshot showed the list still scrolled to the top. Exact cause unconfirmed (not reproducible
+locally); filling the search first (`find label "Search skills…" fill "Uncovered Branches"`)
+leaves one card at the top of the list and removes the scroll from the step. · **Evidence:**
+`specs/08-skills.flow.json`, `client/src/app/skills/_components/SkillsView/SkillsView.tsx:103` ·
+**Apply when:** a flow clicks an item that sits below the fold in a scrolled panel.
+
+### 2026-10-28 — the runner now prints agent-browser's own output on a failed step
+**Context:** CI failures were undiagnosable from the log. · **Insight:** Supersedes: "reproduce
+CI e2e failures on a prod build with a stderr-logging wrapper" — the wrapper is no longer needed
+just to see the reason: `run.ts` prints the CLI's stderr/stdout (first 10 lines, `│`-prefixed)
+under a failed step, and the header shows the agent-browser version (CI installs the latest,
+unpinned). Building a prod copy of the client is still the way to reproduce CI timing. ·
+**Evidence:** `e2e/run.ts` (`runFlow` catch, `main`) · **Apply when:** reading a CI e2e failure.
+
 ## What Doesn't Work
 
 _Dead ends and anti-patterns — what was tried and why it failed. The most skipped section, and the most valuable._
@@ -32,6 +62,16 @@ _Dead ends and anti-patterns — what was tried and why it failed. The most skip
 ## Codebase Patterns
 
 _Conventions and architectural decisions (with the reason) that the code doesn't explain._
+
+### 2026-10-28 — flow 09 count is linked of ALL workspace skills, tied to the seed size
+**Context:** flow 09 expected "3 of 3 enabled" and failed. · **Insight:** the agent Skills tab
+renders `{linked} of {total} enabled` where `total` is every skill in the workspace, not the
+agent's linked ones. The seed now has 7 skills (`976090b` added four for API Contract Reviewer),
+so the Test Quality Reviewer shows "3 of 7 enabled"; `client/specs/003-skills.md:140` still says
+"3 of 3". · **Evidence:**
+`client/src/app/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:93`,
+`server/src/db/seed-skills.ts` · **Apply when:** adding/removing seeded skills — update
+`specs/09-agent-skills.flow.json` in the same change.
 
 ## Tool & Library Notes
 
@@ -47,9 +87,29 @@ the home redirect lands on the *first* repo, which won't be `acme/payments-api`.
 e2e:hermetic` starts an empty Postgres on alternate ports, so the seed is the only repo. ·
 **Apply when:** flow 02 fails locally but passes in CI.
 
+### 2026-10-28 — "No element found" on find…click: `find` does not wait, add `wait --text` first
+**Context:** flows 04/05/08/09 failed at `find … click` right after `wait --url` / `networkidle`.
+· **Insight:** agent-browser `find role|text … click` checks the DOM once and exits 1
+(`✗ No element found: getByRole('button', { name: 'Skills' })`) — it has no auto-wait. `wait
+--url` resolves as soon as the router changes the URL, before the client-fetched view renders, and
+`networkidle` doesn't cover it either. Precede every `find … click` with a `wait --text` for text
+that only exists once the target view is rendered — not the target's own label if it also
+appears elsewhere (e.g. "Skills" is in the sidebar, so flow 09 waits for "Configuration"). ·
+**Evidence:** `specs/09-agent-skills.flow.json`, `specs/02-repo-pulls-detail.flow.json:7` ·
+**Apply when:** adding any click step to a flow.
+
+### 2026-10-28 — "Could not load skills" / "No repo selected" on repeated local runs = API 429
+**Context:** re-running `npm test` back-to-back against one API instance. · **Insight:** the API
+rate-limits at 120 req/min per client (`server/src/app.ts:99`) and one full suite makes ~80
+requests, so a second run within the minute gets 429s and the UI shows error states. Not a CI
+issue (one run per fresh API). Wait a minute between local runs or restart the API. · **Evidence:**
+`server/src/app.ts:99` · **Apply when:** a flow fails only on the 2nd+ consecutive local run.
+
 ## Session Notes
 
 _One dated line per session that added entries: `- YYYY-MM-DD — task: titles added`._
+
+- 2026-10-28 — fix PR #7 e2e (flows 08/09): reproduce CI e2e failures on a prod build with a stderr-logging wrapper, flow 09 count is linked of ALL workspace skills, "No element found" on find…click, "Could not load skills" / "No repo selected" on repeated local runs = API 429
 
 ## Open Questions
 

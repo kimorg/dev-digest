@@ -12,11 +12,15 @@ on:
     paths:
       - 'reviewer-core/**'
       - 'server/src/vendor/shared/**'
+      - 'server/src/adapters/mocks.ts'
+      - 'server/src/adapters/git/diff-parser.ts'
       - '.github/workflows/reviewer-core.yml'
   pull_request:
     paths:
       - 'reviewer-core/**'
       - 'server/src/vendor/shared/**'
+      - 'server/src/adapters/mocks.ts'
+      - 'server/src/adapters/git/diff-parser.ts'
       - '.github/workflows/reviewer-core.yml'
 
 permissions:
@@ -44,6 +48,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run typecheck
+      - name: Typecheck (src + test)
+        run: npm run typecheck
 
       - run: npm test

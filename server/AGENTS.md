@@ -14,7 +14,7 @@ Vitest + testcontainers · pnpm.
 ```sh
 pnpm install
 pnpm dev                                              # :3001 (tsx watch)
-pnpm typecheck
+pnpm typecheck                                        # src + test (tsconfig.test.json); build uses tsconfig.json
 pnpm exec vitest run --exclude '**/*.it.test.ts'      # unit — hermetic, no Docker
 pnpm exec vitest run .it.test                         # integration — needs Docker
 pnpm db:generate   # after editing src/db/schema

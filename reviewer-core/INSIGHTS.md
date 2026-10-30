@@ -51,6 +51,20 @@ as before. · **Evidence:** `reviewer-core/src/prompt.ts:16`, `server/src/module
 
 _Quirks of dependencies, tools, CLIs and the environment._
 
+### 2026-10-27 — `npm run typecheck` now covers `reviewer-core/test/**`
+Supersedes: "`npm run typecheck` does not cover `reviewer-core/test/**`". See `server/INSIGHTS.md` → "`pnpm typecheck` now covers `server/test/**` via `tsconfig.test.json`".
+
+### 2026-10-27 — the test typecheck compiles `server/src/adapters/mocks.ts` and `git/diff-parser.ts`
+**Context:** plan 001, adding `test/**` to the reviewer-core typecheck · **Insight:** `test/run.test.ts`
+imports `MockLLMProvider` / `MockGitClient` from `../../server/src/adapters/mocks.js`, so
+`npm run typecheck` now type-checks those server files (and `git/diff-parser.ts`) under
+reviewer-core's tsconfig, which maps only `zod` and `@devdigest/shared`. A new import in them of
+anything else (drizzle, fastify, another server module) breaks the reviewer-core typecheck, not
+the server one. The reviewer-core CI workflow lists both files in its `paths` for that reason ·
+**Evidence:** `reviewer-core/test/run.test.ts:3`, `reviewer-core/tsconfig.json:21-25`,
+`.github/workflows/reviewer-core.yml` (`paths`) · **Apply when:** editing `server/src/adapters/mocks.ts`
+or `diff-parser.ts` — run `cd reviewer-core && npm run typecheck` too.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -60,6 +74,8 @@ _An error that keeps coming back — quote its text — and the fix._
 _One dated line per session that added entries: `- YYYY-MM-DD — task: titles added`._
 
 - 2026-10-18 — conventions prompt reuses the guard: `INJECTION_GUARD` is now exported (read-only) for non-review prompts
+- 2026-10-27 — plan 001 typecheck of tests: `npm run typecheck` now covers `reviewer-core/test/**`, the test typecheck compiles `server/src/adapters/mocks.ts` and `git/diff-parser.ts`
+
 ## Open Questions
 
 _Still unresolved — what is known, what isn't, where to look next._

@@ -16,6 +16,8 @@ export {
   assemblePrompt,
   wrapUntrusted,
   INJECTION_GUARD,
+  INTENT_SCOPE_RULE,
+  renderIntent,
   type PromptParts,
   type AssembledPrompt,
 } from './prompt.js';
@@ -34,6 +36,9 @@ export {
 
 // Map-reduce helpers (reduce partials, slice a file's diff).
 export { reduceReviews, sliceDiff } from './review/reduce.js';
+
+// Out-of-scope filter (applied after grounding when a PR intent is supplied).
+export { applyScopeFilter, type ScopeResult } from './review/scope.js';
 
 // The engine entry point: given (diff + resolved agent inputs + LLM) → grounded Review.
 export {

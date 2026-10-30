@@ -12,7 +12,7 @@ const usePrReviews = vi.fn((_prId: string) => reviewsState);
 vi.mock("@/lib/hooks/reviews", () => ({ usePrReviews: (id: string) => usePrReviews(id) }));
 
 import { FindingsSeverityCounts } from "./FindingsSeverityCounts";
-import { countBySeverity, latestReviewPerAgent, sortBySeverity } from "./helpers";
+import { countBySeverity, sortBySeverity } from "./helpers";
 import { HOVER_CLOSE_MS, HOVER_OPEN_MS } from "./constants";
 
 afterEach(() => {
@@ -177,20 +177,6 @@ function review(
     findings,
   };
 }
-
-describe("latestReviewPerAgent", () => {
-  it("keeps the newest review of each agent (agent-less reviews are one group), skips summaries", () => {
-    const picked = latestReviewPerAgent([
-      review("a2", "2026-10-03T00:00:00Z", [], "agentA"),
-      { ...review("sum", "2026-10-03T00:00:00Z", [], "agentB"), kind: "summary" },
-      review("b1", "2026-10-02T00:00:00Z", [], "agentB"),
-      review("a1", "2026-10-01T00:00:00Z", [], "agentA"),
-      review("n2", "2026-10-01T00:00:00Z", []),
-      review("n1", "2026-09-30T00:00:00Z", []),
-    ]);
-    expect(picked.map((r) => r.id)).toEqual(["a2", "b1", "n2"]);
-  });
-});
 
 describe("sortBySeverity", () => {
   it("orders CRITICAL → WARNING → SUGGESTION, stable within a severity", () => {

@@ -194,6 +194,28 @@ test builds its own fixture. The header token count (`tokens.skills`) still coun
 `server/src/modules/reviews/helpers.ts:102` · **Apply when:** changing `renderSkillBlock` or the
 trace Skills block.
 
+### 2026-10-28 — sticky elements inside a PR tab must sit below `PrDetailHeader`: use `top: var(--pr-header-h)`
+**Context:** Smart Diff group headers (`position: sticky; top: 0`) looked fine in jsdom but disappeared on
+scroll. · **Insight:** `PrDetailHeader` is itself `sticky; top: 0; zIndex: 5` in the same `<main>` scroller,
+and its height varies (the title wraps), so any `top: 0` sticky child in tab content slides underneath it.
+`usePublishHeight` (ResizeObserver) now writes the header height to `--pr-header-h` on the scroller; use
+`top: "var(--pr-header-h, 0px)"` and a zIndex below 5. Checked by scrolling `<main>` via CDP: the group
+header's top went from 52 px (hidden) to 228 px (just under the tabs). · **Evidence:**
+`client/src/app/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/styles.ts:5`,
+`…/PrDetailHeader/hooks/usePublishHeight.ts`, `…/DiffTab/_components/RoleGroup/styles.ts` · **Apply when:**
+adding any sticky header/toolbar inside a PR-detail tab.
+
+### 2026-10-28 — findings refresh on every drop in live runs, not on RunStatus `onDone`
+**Context:** Smart Diff needed findings to update on the Files changed tab after Run review. · **Insight:**
+`RunStatus` (the only SSE "run settled" signal) is mounted only inside FindingsTab, so other tabs never
+heard about finished runs. `useRefreshOnRunsSettled(liveRunIds.length, refreshRuns)` in `PrDetailView` is
+now the single owner (the `onRunDone` wiring was removed). It must fire on **every decrease** of the
+live-run count: a first version fired only on >0 → 0, so with "Run all" no agent's findings appeared
+until the last agent finished. The refresh now follows the 4 s `usePrActiveRuns` poll instead of SSE. ·
+**Evidence:** `client/src/app/repos/[repoId]/pulls/[number]/_components/PrDetailView/hooks/useRefreshOnRunsSettled.ts`,
+`…/PrDetailView/PrDetailView.tsx:51`, `…/RunStatus/RunStatus.tsx:30` · **Apply when:** anything on the PR
+page must react to a review run finishing.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -259,6 +281,14 @@ or put text and icon in an `inline-flex` container. Verified with a headless-Chr
 **Evidence:** `client/src/app/repos/[repoId]/conventions/_components/ConventionCard/styles.ts` (`linkIcon`),
 `client/src/app/globals.css:2` · **Apply when:** putting an icon inline with text outside a flex container.
 
+### 2026-10-28 — `@testing-library/user-event` is not installed: component tests use `fireEvent`
+**Context:** plan 002, IntentCard tests (the RTL skill and the plan asked for `userEvent`). · **Insight:**
+`client/package.json` has no `@testing-library/user-event`, and ~30 existing test files use
+`fireEvent`. Importing `userEvent` fails module resolution. Use `fireEvent` unless the user approves
+adding the dependency. · **Evidence:** `client/package.json`,
+`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/IntentCard/IntentCard.test.tsx` ·
+**Apply when:** writing a client component test or a plan that prescribes `userEvent`.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -301,6 +331,8 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-18 — dark select dropdown: native `<select>` popups follow `color-scheme`, not the theme tokens
 - 2026-10-18 — L02 Conventions page: testing a whole page view in vitest: stub `AppShell` + repo context, pin `now` on the intl provider
 - 2026-10-18 — Conventions evidence → GitHub link: an `Icon.*` inside running text breaks onto its own line: Tailwind's preflight makes `svg` a block
+- 2026-10-28 — plan 002 Intent Layer: `@testing-library/user-event` is not installed: component tests use `fireEvent`
+- 2026-10-28 — plan 003 Smart Diff: sticky elements inside a PR tab must sit below `PrDetailHeader`: use `top: var(--pr-header-h)`, findings refresh on every drop in live runs, not on RunStatus `onDone`
 
 ## Open Questions
 

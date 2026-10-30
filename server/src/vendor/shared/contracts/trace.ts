@@ -45,6 +45,8 @@ export const PromptTokens = z.object({
   callers: z.number().int().nullable(),
   repo_map: z.number().int().nullable(),
   pr_description: z.number().int().nullable(),
+  /** PR intent block; nullish: traces persisted before the intent layer lack it. */
+  intent: z.number().int().nullish(),
   user: z.number().int().nullable(),
 });
 export type PromptTokens = z.infer<typeof PromptTokens>;
@@ -70,6 +72,8 @@ export const PromptAssembly = z.object({
   repo_map: z.string().nullish(),
   /** PR author's description/body (truncated); null when absent. */
   pr_description: z.string().nullish(),
+  /** Rendered PR intent block; null/absent when no intent was available. */
+  intent: z.string().nullish(),
   user: z.string(),
   /** Per-slot token counts, filled by the server after the run. Old traces lack it. */
   tokens: PromptTokens.nullish(),
@@ -95,6 +99,23 @@ export const RunStats = z.object({
 });
 export type RunStats = z.infer<typeof RunStats>;
 
+/** What the intent layer did for this run (all fields but `status` nullish — old traces lack it). */
+export const RunIntentTrace = z.object({
+  status: z.enum(['regenerated', 'reused', 'failed']),
+  provider: z.string().nullish(),
+  model: z.string().nullish(),
+  tokens_in: z.number().int().nullish(),
+  tokens_out: z.number().int().nullish(),
+  cost_usd: z.number().nullish(),
+  diff_tokens: z.number().int().nullish(),
+  confidence: z.enum(['high', 'medium', 'low']).nullish(),
+  scope_filter: z.enum(['applied', 'skipped_low_confidence']).nullish(),
+  filtered_out: z.number().int().nullish(),
+  out_of_scope_signal: z.boolean().nullish(),
+  error: z.string().nullish(),
+});
+export type RunIntentTrace = z.infer<typeof RunIntentTrace>;
+
 /** The single-document trace stored in `run_traces.trace`. */
 export const RunTrace = z.object({
   config: z.object({
@@ -112,6 +133,7 @@ export const RunTrace = z.object({
   memory_pulled: z.array(MemoryPulled),
   specs_read: z.array(z.string()),
   log: z.array(RunLogLine),
+  intent: RunIntentTrace.nullish(),
 });
 export type RunTrace = z.infer<typeof RunTrace>;
 

@@ -41,7 +41,8 @@
     "viewOnGitHub": "View on GitHub",
     "postedToGitHub": "Posts to GitHub immediately",
     "outdatedTitle": "{count} comment(s) on older revisions",
-    "addComment": "Add a comment on this line"
+    "addComment": "Add a comment on this line",
+    "unplacedTitle": "{count, plural, one {# annotation} other {# annotations}} outside the diff lines"
   },
   "repoSync": {
     "synced": "synced",

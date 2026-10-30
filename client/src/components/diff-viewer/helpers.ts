@@ -1,5 +1,10 @@
 /** Pure helpers for the DiffViewer. */
-import { HUNK_HEADER_RE } from "./constants";
+import { AUTO_EXPAND_MAX_LINES, HUNK_HEADER_RE } from "./constants";
+
+/** Whether a file starts expanded (few enough changed lines). */
+export function isAutoExpanded(file: { additions?: number | null; deletions?: number | null }): boolean {
+  return (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES;
+}
 
 export interface Line {
   kind: "add" | "del" | "ctx" | "hunk";

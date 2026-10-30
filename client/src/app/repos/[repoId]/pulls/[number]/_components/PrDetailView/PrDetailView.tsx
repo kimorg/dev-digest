@@ -22,6 +22,7 @@ import { DiffTab } from "../DiffTab";
 import RunTraceDrawer from "../RunTraceDrawer";
 import { PrNotFound } from "../PrNotFound";
 import { usePrDetailUrlState } from "./hooks/usePrDetailUrlState";
+import { useRefreshOnRunsSettled } from "./hooks/useRefreshOnRunsSettled";
 import { allFindings, canComment, lethalTrifectaFindings } from "./helpers";
 import { s } from "./styles";
 
@@ -45,6 +46,9 @@ export function PrDetailView() {
   const runs = reviews ?? [];
   const findings = React.useMemo(() => allFindings(reviews ?? []), [reviews]);
   const liveRunIds = (activeRuns ?? []).map((r) => r.run_id);
+  // The single owner of "a run settled → refresh" on every tab (the Agent runs tab no longer
+  // refreshes through RunStatus), so the diff's findings update too.
+  useRefreshOnRunsSettled(liveRunIds.length, refreshRuns);
   const traceReview = traceRunId ? runs.find((r) => r.run_id === traceRunId) : undefined;
 
   // The real "owner/repo" (null until the repo is loaded) — used to build
@@ -114,7 +118,7 @@ export function PrDetailView() {
       />
 
       <div style={s.body}>
-        {tab === "overview" && <OverviewTab prBody={pr.body} />}
+        {tab === "overview" && <OverviewTab prId={prId} repoId={repoId} prBody={pr.body} />}
 
         {tab === "findings" && (
           <FindingsTab
@@ -130,7 +134,6 @@ export function PrDetailView() {
             onDelete={(id) => {
               if (window.confirm(t("detail.confirmDeleteRun"))) deleteRun.mutate(id);
             }}
-            onRunDone={refreshRuns}
           />
         )}
 

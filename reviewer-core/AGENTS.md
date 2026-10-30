@@ -12,7 +12,7 @@ Node ≥ 22 · TypeScript · `openai` SDK · Zod 3 · Vitest · **npm** (has `pa
 ```sh
 npm install
 npm test               # hermetic, stubbed LLMProvider — no keys, no network
-npm run typecheck      # `build` is also just a typecheck — the package never emits JS
+npm run typecheck      # src + test (tsconfig.test.json); build = typecheck of src only
 cd ../server && pnpm typecheck   # after any change here (server compiles this source)
 ```
 

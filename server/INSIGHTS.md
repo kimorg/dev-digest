@@ -73,6 +73,15 @@ returns 200. · **Evidence:** `server/src/modules/reviews/run-executor.ts:258`,
 `server/test/reviews.it.test.ts` (`runAndTrace`) · **Apply when:** adding work to the success path
 of a run, or writing a test or UI that reads a trace right after the run finishes.
 
+### 2026-10-28 — PR file lists stop at 100: `getPullRequest` calls `pulls.listFiles` once with `per_page: 100`
+**Context:** checking Smart Diff on this repo's PR #7 (105 files) in a real browser. · **Insight:** the
+Files changed tab said "100 files" and `+8959 −86` while the header said 105 files and `+9062 −101`. The
+GitHub adapter fetches one page of files with no pagination, `GET /pulls/:id` stores exactly that page in
+`pr_files`, and everything built on `pr_files` (Smart Diff groups, intent, review prompts) silently misses
+files 101+. Not fixed (pre-existing). · **Evidence:** `server/src/adapters/github/octokit.ts:79`,
+`server/src/modules/pulls/routes.ts:228` · **Apply when:** a feature needs every changed file of a large
+PR, or file/line totals disagree with `pull_requests.files_count`.
+
 ## Codebase Patterns
 
 _Conventions and architectural decisions (with the reason) that the code doesn't explain._
@@ -184,6 +193,26 @@ has no eslint/prettier/tsconfig (they live per package), so a real scan sent onl
 `server/src/modules/conventions/service.ts` (`collectSamples`) · **Apply when:** sampling repo files for a
 model, or testing code that reads optional files through the git port.
 
+### 2026-10-28 — PR intent is never generated on GET, and `container.prIntent` must stay one cached instance
+**Context:** plan 002 Intent Layer. · **Insight:** the user explicitly excluded generating intent when
+the PR Overview opens. `GET /pulls/:id/intent` calls `IntentService.get`, which only reads the stored
+row and reports `stale` (fingerprint = title, body, head_sha, linked docs, provider + model). The model
+is called only from `ensure()`, i.e. review-run start and `POST /pulls/:id/intent/recalculate`.
+`ensure()` single-flights per PR through an in-memory `Map` on the service instance, so the container
+getter caches the instance (`this._prIntent ??= …`). Building a fresh `IntentService` per request or
+per run would silently allow duplicate model calls. · **Evidence:** `server/src/modules/intent/routes.ts:23`,
+`server/src/modules/intent/service.ts:43`, `server/src/platform/container.ts:129` · **Apply when:**
+changing intent triggers, adding a caller of intent, or refactoring the container getters.
+
+### 2026-10-28 — types shared by `domain.ts` and `ports.ts` go in the module's `types.ts`
+**Context:** plan 003 Smart Diff, `buildSmartDiff` (domain) and the `SmartDiffStore` port both need
+`SmartDiffSourceFile` / `ReviewHead` / `FindingAnchor`. · **Insight:** `domain.ts` is ring 1 and may not
+import `ports.ts` (ring 2, depcruise `domain-is-pure`). Declare the plain shapes in the module's
+`types.ts` (domain ring) and let `ports.ts` import them from there. The depcruise `--ignore-known`
+comparison reported 0 new violations with this layout. · **Evidence:** `server/src/modules/smart-diff/types.ts`,
+`server/src/modules/smart-diff/ports.ts:1`, `server/src/modules/smart-diff/domain.ts` · **Apply when:**
+a pure domain function and a port in the same module need the same input type.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -245,6 +274,43 @@ Check the generated SQL afterwards for `ADD COLUMN` and no `RENAME`. · **Eviden
 `server/src/db/migrations/0012_conventions_extractor.sql` · **Apply when:** a schema change removes a column
 while adding columns to the same table (or renames one).
 
+### 2026-10-27 — `pnpm typecheck` now covers `server/test/**` via `tsconfig.test.json`
+**Context:** plan `docs/plans/001-typecheck-tests.md` · **Insight:** Supersedes: "`pnpm typecheck`
+never sees `server/test/**`; vitest runs tests without type checking". `typecheck` (server and
+reviewer-core) now runs `tsc --noEmit -p tsconfig.test.json` (extends `tsconfig.json`, adds
+`test/**/*.ts`); turning it on surfaced 13 latent errors in `server/test` and 1 in
+`reviewer-core/test`, all fixed in test code only. `build` and dependency-cruiser stay on
+`tsconfig.json` (src only) — widening its `include` would make `build` emit tests into `dist/`.
+The pr-self-review typecheck, `implementer-verify` and `test-writer-verify` pick
+`tsconfig.test.json` when it exists, else `tsconfig.json`. A tsconfig placed **outside** the
+package fails with `TS2688: Cannot find type definition file for 'node'` (`types` resolve from
+the config's directory) — keep ad-hoc configs inside the package ·
+**Evidence:** `server/tsconfig.test.json`, `server/package.json:10`, `reviewer-core/package.json:8`,
+`.claude/skills/pr-self-review/scripts/checks.mjs` (`runTypecheck`), `.claude/hooks/implementer-verify.mjs`,
+`.claude/hooks/test-writer-verify.mjs` · **Apply when:** adding a test-only directory or a new
+tsc invocation in a script/hook — point it at `tsconfig.test.json`, not `tsconfig.json`.
+
+### 2026-10-28 — `MockLLMProvider` reuses the `structured` fixture for every schema, so a run's intent step fails soft in tests
+**Context:** plan 002, review runs now make an extra structured call (`schemaName: 'Intent'`) before the
+agent call. · **Insight:** the mock returns `structuredBySchema[schemaName] ?? structured`, so a test that
+sets only the review fixture feeds that review JSON to the `Intent` schema. The parse fails, the run
+logs "intent unavailable" and continues without intent, so the test passes while no intent reached the
+prompt. A test that wants intent in the run must pass `structuredBySchema: { Intent: … }`. ·
+**Evidence:** `server/src/adapters/mocks.ts:91`, `server/test/reviews.it.test.ts` · **Apply when:**
+writing a run test that asserts on intent, the scope filter, or `MockLLMProvider.calls` counts.
+
+### 2026-10-28 — regenerating an uncommitted migration that is already applied locally needs a manual local rollback, run from the main thread
+**Context:** plan 002 Revision 3 removed a column from the not-yet-committed `0015`. · **Insight:**
+the clean path is: `git checkout -- server/src/db/migrations/meta/_journal.json`, delete the untracked
+`0015_*.sql` and `meta/0015_snapshot.json`, then `pnpm db:generate --name …` (no hand-editing). The local
+dev DB still has the old columns and a `drizzle.__drizzle_migrations` row for the old `0015`, so
+`db:migrate` would skip the new file. Drop the old columns and delete that row in one transaction, then
+`pnpm db:migrate` applies the regenerated file (verified: new row id 20). The `implementer-guard` hook
+blocks the implementer from `git checkout` and any shell command touching `src/db/migrations`, so these
+steps run in the main thread with the user's OK. · **Evidence:** `server/src/db/migrations/0015_pr_intent_fingerprint.sql`,
+`server/src/db/migrations/meta/_journal.json` · **Apply when:** changing a schema whose generated migration
+is uncommitted but already migrated locally.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -266,6 +332,10 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-17 — L02 Skills server implementation: a run is marked `done` before its trace is written: polling status then GET `/runs/:id/trace` can 404, skills are now wired into runs; the link guards are in place, fflate `unzipSync` with `filter: () => false` lists a zip without inflating anything
 - 2026-10-18 — fix depcruise CRITICALs in skills/reviews: a new module only passes the onion rules if its repository returns contract DTOs
 - 2026-10-18 — L02 Conventions Extractor: a synchronous model call of ~70 s is fine end to end: no client or server request timeout, a module that needs another module's function gets it through a `types.ts` facade on the container, `getConventionSamples` filters configs out; tests' `MockGitClient` returns `''`, not ENOENT, `pnpm db:generate` hangs silently when a change drops a column and adds others in the same table
+- 2026-10-27 — plan 001 typecheck of tests: `pnpm typecheck` now covers `server/test/**` via `tsconfig.test.json`
+- 2026-10-28 — plan 002 Intent Layer: PR intent is never generated on GET, and `container.prIntent` must stay one cached instance, `MockLLMProvider` reuses the `structured` fixture for every schema, so a run's intent step fails soft in tests
+- 2026-10-28 — plan 002 Revision 3 (drop risk areas): regenerating an uncommitted migration that is already applied locally needs a manual local rollback, run from the main thread
+- 2026-10-28 — plan 003 Smart Diff: PR file lists stop at 100: `getPullRequest` calls `pulls.listFiles` once with `per_page: 100`, types shared by `domain.ts` and `ports.ts` go in the module's `types.ts`
 
 ## Open Questions
 

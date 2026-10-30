@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Finding, Verdict } from './findings.js';
-import { Intent, SmartDiff } from './brief.js';
+import { Intent, IntentConfidence, IntentSource, SmartDiff } from './brief.js';
 
 /**
  * A2 — Review-Core API surface contracts. These extend the core
@@ -56,9 +56,30 @@ export const ReviewRunResponse = z.object({
 });
 export type ReviewRunResponse = z.infer<typeof ReviewRunResponse>;
 
-/** Intent persisted for a PR (the Intent plus the pr_id it scopes). */
-export const PrIntentRecord = Intent.extend({ pr_id: z.string() });
+/** Intent persisted for a PR (the Intent plus the pr_id it scopes and its provenance). */
+export const PrIntentRecord = Intent.extend({
+  pr_id: z.string(),
+  confidence: IntentConfidence,
+  sources: z.array(IntentSource),
+  provider: z.string().nullable(),
+  model: z.string().nullable(),
+  generated_at: z.string(),
+});
 export type PrIntentRecord = z.infer<typeof PrIntentRecord>;
+
+/** `GET /pulls/:id/intent` — read-only; `stale` = the PR/model changed since detection. */
+export const PrIntentView = z.object({
+  intent: PrIntentRecord.nullable(),
+  stale: z.boolean(),
+});
+export type PrIntentView = z.infer<typeof PrIntentView>;
+
+/** `POST /pulls/:id/intent/recalculate` — `regenerated: false` = fingerprint unchanged. */
+export const PrIntentResult = z.object({
+  intent: PrIntentRecord,
+  regenerated: z.boolean(),
+});
+export type PrIntentResult = z.infer<typeof PrIntentResult>;
 
 /** Smart-diff response for a PR (the SmartDiff). */
 export const SmartDiffResponse = SmartDiff;

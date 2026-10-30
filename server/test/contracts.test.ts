@@ -7,11 +7,13 @@ import {
   Risks,
   PrHistory,
   SmartDiff,
+  SmartDiffRole,
   Conformance,
   Onboarding,
   EvalRun,
   MemoryItem,
   RunTrace,
+  PrIntentView,
   Settings,
   Repo,
   PrDetail,
@@ -77,7 +79,11 @@ describe('AI contracts parse fixtures', () => {
 
   it('Intent / BlastRadius / Risks / PrHistory', () => {
     expect(() =>
-      Intent.parse({ intent: 'x', in_scope: ['a'], out_of_scope: ['b'] }),
+      Intent.parse({
+        intent: 'x',
+        in_scope: ['a'],
+        out_of_scope: ['b'],
+      }),
     ).not.toThrow();
     expect(() =>
       BlastRadius.parse({
@@ -125,6 +131,13 @@ describe('AI contracts parse fixtures', () => {
       split_suggestion: { too_big: false, total_lines: 285, proposed_splits: [] },
     });
     expect(d.groups[0]!.role).toBe('core');
+  });
+
+  it('SmartDiffRole: five roles, unknown role rejected', () => {
+    for (const role of ['core', 'tests', 'wiring', 'docs', 'boilerplate']) {
+      expect(SmartDiffRole.parse(role)).toBe(role);
+    }
+    expect(() => SmartDiffRole.parse('config')).toThrow();
   });
 
   it('Conformance / Onboarding / EvalRun / MemoryItem', () => {
@@ -176,6 +189,31 @@ describe('AI contracts parse fixtures', () => {
       log: [{ t: '00.00', kind: 'info', msg: 'started' }],
     });
     expect(trace.tool_calls).toHaveLength(1);
+  });
+
+  it('intent layer contracts: PrIntentView null, old RunTrace without intent, new trace with intent', () => {
+    expect(PrIntentView.parse({ intent: null, stale: false }).intent).toBeNull();
+    const base = {
+      config: { agent: 'Sec', model: 'gpt-4.1' },
+      stats: { duration_ms: 1, tokens_in: 1, tokens_out: 1, findings: 0, grounding: '0/0 passed' },
+      prompt_assembly: { system: 's', user: 'u' },
+      tool_calls: [],
+      raw_output: '',
+      memory_pulled: [],
+      specs_read: [],
+      log: [],
+    };
+    expect(RunTrace.parse(base).intent).toBeUndefined();
+    const withIntent = RunTrace.parse({
+      ...base,
+      prompt_assembly: { system: 's', user: 'u', intent: 'x', tokens: undefined },
+      intent: { status: 'reused', scope_filter: 'applied', diff_tokens: 10 },
+    });
+    expect(withIntent.intent?.status).toBe('reused');
+    expect(Finding.parse({
+      id: 'f', severity: 'WARNING', category: 'bug', title: 't', file: 'a.ts',
+      start_line: 1, end_line: 1, rationale: 'r', confidence: 0.5, in_scope: false,
+    }).in_scope).toBe(false);
   });
 
   it('PrMeta findings_counts: parsed when present, optional otherwise', () => {

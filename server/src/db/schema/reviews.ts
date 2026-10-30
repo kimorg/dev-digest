@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import type { IntentSource } from '@devdigest/shared';
 import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces } from './core';
@@ -52,6 +53,15 @@ export const prIntent = pgTable('pr_intent', {
   intent: text('intent').notNull(),
   inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  confidence: text('confidence', { enum: ['high', 'medium', 'low'] })
+    .notNull()
+    .default('low'),
+  sources: jsonb('sources').$type<IntentSource[]>().notNull().default(sql`'[]'::jsonb`),
+  // sha256 of the inputs the intent was derived from; '' never matches → regenerate.
+  fingerprint: text('fingerprint').notNull().default(''),
+  provider: text('provider'),
+  model: text('model'),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const prBrief = pgTable('pr_brief', {

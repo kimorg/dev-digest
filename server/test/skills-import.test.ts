@@ -119,11 +119,12 @@ describe('parseSkillUpload — archive', () => {
   });
 
   it('no core file → skill_archive_no_core (missing, nested too deep, or two top-level folders)', () => {
-    for (const files of [
+    const archives: Record<string, string>[] = [
       { 'rule/README.md': 'x' },
       { 'a/b/SKILL.md': SKILL_MD },
       { 'a/SKILL.md': SKILL_MD, 'b/SKILL.md': SKILL_MD },
-    ]) {
+    ];
+    for (const files of archives) {
       expect(importError(() => parseSkillUpload('s.zip', zip(files))).code).toBe(
         'skill_archive_no_core',
       );

@@ -63,9 +63,31 @@
     "boilerplateLabel": "Boilerplate",
     "largeTitle": "This PR is large ({lines} changed lines)",
     "largeBody": "Consider splitting it into smaller, focused PRs for easier review:",
-    "filesCount": "{count} files",
+    "filesCount": "{count, plural, one {# file} other {# files}}",
     "findingLines": "{count} finding-lines",
-    "groupedByRole": "Smart Diff · grouped by role"
+    "groupedByRole": "Smart Diff · grouped by role",
+    "testsLabel": "Tests",
+    "docsLabel": "Docs",
+    "coreHint": "The substance of the change — review closely",
+    "testsHint": "Test files and fixtures",
+    "wiringHint": "Hooks the core into the app",
+    "docsHint": "Documentation and licensing",
+    "boilerplateHint": "Generated / mechanical — skim",
+    "filesWithFindings": "{count, plural, one {# file has findings} other {# files have findings}}",
+    "expandAll": "Expand all files in {group}",
+    "collapseAll": "Collapse all files in {group}",
+    "smartOrder": "Smart order",
+    "originalOrder": "Original order",
+    "orderLabel": "File order",
+    "lineLabel": {
+      "blocker": "blocker",
+      "warning": "warning",
+      "suggestion": "suggestion"
+    },
+    "fileHasFindings": "Has findings",
+    "loadError": "Couldn't group the files by role — showing them in the original order.",
+    "notReviewedYet": "No review has run for this PR yet, so there are no findings in the diff.",
+    "unplacedFindings": "{count, plural, one {# finding} other {# findings}} outside the diff lines"
   },
   "list": {
     "breadcrumb": "Pull Requests",
@@ -172,6 +194,7 @@
     "title": "Files changed · {count} files",
     "showComments": "Show comments ({count})",
     "hideComments": "Hide comments ({count})",
-    "postFailed": "Couldn't post the comment to GitHub."
+    "postFailed": "Couldn't post the comment to GitHub.",
+    "summary": "{count, plural, one {# file} other {# files}} · <add>+{additions}</add> <del>−{deletions}</del>"
   }
 }

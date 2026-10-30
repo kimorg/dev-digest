@@ -9,6 +9,7 @@ import {
   TEST_QUALITY_REVIEWER_PROMPT,
   API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { computeIntentFingerprint } from '../modules/intent/domain.js';
 import { TEST_QUALITY_SKILLS, API_CONTRACT_SKILLS, type SeedSkill } from './seed-skills.js';
 
 /** Default provider/model for the built-in reviewer agents. */
@@ -136,6 +137,40 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       message: 'Add token-bucket rate limiter',
       author: 'marisa.koch',
     });
+
+    // A stored intent so the Overview card has content without any model call.
+    // The fingerprint comes from the same pure function the service uses, so
+    // the seeded row is not stale (provider/model = the review_intent default).
+    const seedTitle = 'Add rate limiting to public API endpoints';
+    const seedBody =
+      'Add rate limiting to public API endpoints to prevent abuse from unauthenticated clients.';
+    await db
+      .insert(t.prIntent)
+      .values({
+        prId: pr!.id,
+        intent: 'Add rate limiting to the public API so unauthenticated clients cannot abuse it.',
+        inScope: ['Token-bucket rate limiter middleware', 'Applying it to public endpoints', 'Limits in config'],
+        outOfScope: ['Authenticated user quotas', 'Changing endpoint behaviour'],
+        confidence: 'medium',
+        sources: [
+          { kind: 'title' },
+          { kind: 'branch' },
+          { kind: 'description' },
+          { kind: 'commits' },
+          { kind: 'files' },
+        ],
+        fingerprint: computeIntentFingerprint({
+          provider: 'openai',
+          model: 'gpt-4.1',
+          title: seedTitle,
+          body: seedBody,
+          headSha: 'a1b2c3d4e5f6',
+          docs: [],
+        }),
+        provider: 'openai',
+        model: 'gpt-4.1',
+      })
+      .onConflictDoNothing();
 
     // a sample review + findings so the PR shows results before the first run
     const [review] = await db

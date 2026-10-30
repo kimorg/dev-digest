@@ -15,5 +15,34 @@
     "blame": "blame",
     "noHistory": "No history available for this line.",
     "noCommits": "No commits found for this line."
+  },
+  "intent": {
+    "title": "Intent",
+    "recalculate": "Recalculate",
+    "inScope": "In scope",
+    "outOfScope": "Out of scope",
+    "none": "Nothing listed.",
+    "empty": "Intent not detected yet — it is detected when a review runs, or click Recalculate.",
+    "stale": "PR changed since detection",
+    "unchanged": "No changes since the last detection.",
+    "errorTitle": "Couldn't load the PR intent",
+    "modelHint": "If this keeps failing, check the PR Review · Intent model in Settings → Models.",
+    "lowConfidenceHint": "Low confidence — based on the title, branch, commits and file paths only. Out-of-scope filtering is off.",
+    "confidence": {
+      "high": "High confidence",
+      "medium": "Medium confidence",
+      "low": "Low confidence"
+    },
+    "sources": {
+      "label": "Sources",
+      "title": "title",
+      "description": "description",
+      "issue": "issue",
+      "doc": "doc",
+      "branch": "branch",
+      "commits": "commits",
+      "files": "files"
+    },
+    "model": "{model} · {date}"
   }
 }

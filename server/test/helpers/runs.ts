@@ -1,5 +1,6 @@
 import * as t from '../../src/db/schema.js';
 import { eq } from 'drizzle-orm';
+import type { FastifyInstance } from 'fastify';
 import type { PgFixture } from './pg.js';
 
 /**
@@ -29,6 +30,26 @@ export async function waitForPrRuns(
         : runs.length > 0 && terminal.length === runs.length;
     if (done) return runs;
     if (Date.now() - start > timeoutMs) return runs;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
+/**
+ * A run is marked `done` just before its `run_traces` row is written, so
+ * `waitForPrRuns` can return while `GET /runs/:id/trace` still answers 404.
+ * Poll the trace itself until it exists and return its JSON.
+ */
+export async function waitForRunTrace(
+  app: Pick<FastifyInstance, 'inject'>,
+  runId: string,
+  opts: { timeoutMs?: number } = {},
+): Promise<any> {
+  const { timeoutMs = 5_000 } = opts;
+  const start = Date.now();
+  for (;;) {
+    const res = await app.inject({ method: 'GET', url: `/runs/${runId}/trace` });
+    if (res.statusCode === 200) return res.json();
+    if (Date.now() - start > timeoutMs) throw new Error(`trace of run ${runId} was never written`);
     await new Promise((r) => setTimeout(r, 25));
   }
 }

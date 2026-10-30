@@ -28,6 +28,8 @@ import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import type { FeatureModels } from '../modules/settings/types.js';
+import type { PrIntents } from '../modules/intent/types.js';
+import { buildIntentService } from '../modules/intent/wiring.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
@@ -75,6 +77,7 @@ export class Container {
   private _agentsRepo?: AgentsRepository;
   private _reviewRepo?: ReviewRepository;
   private _repoIntel?: RepoIntel;
+  private _prIntent?: PrIntents;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
@@ -117,6 +120,14 @@ export class Container {
     if (this.overrides.repoIntel) return this.overrides.repoIntel;
     this._repoIntel ??= new RepoIntelService(this);
     return this._repoIntel;
+  }
+
+  /**
+   * PR intent facade. One cached instance, so the service's single-flight
+   * covers every caller (intent routes + review runs).
+   */
+  get prIntent(): PrIntents {
+    return (this._prIntent ??= buildIntentService(this));
   }
 
   /** Import-graph builder (dependency-cruiser). T3 indexer pipeline only. */

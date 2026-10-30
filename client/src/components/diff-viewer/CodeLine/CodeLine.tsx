@@ -7,7 +7,9 @@ import { useTranslations } from "next-intl";
 import { commentTargetFor, type CommentThread, type DiffCommentApi } from "../comments";
 import { cs } from "../comments.styles";
 import { type Line } from "../helpers";
-import { s, lineRowFor, lineSignFor } from "../styles";
+import { s, lineRowFor, lineSignFor, markLabelFor, markRowFor } from "../styles";
+import type { DiffAnnotation } from "../annotations";
+import { Icon } from "@devdigest/ui";
 import { CommentThreadView } from "../CommentThreadView";
 import { InlineComposer } from "../InlineComposer";
 
@@ -16,11 +18,16 @@ export function CodeLine({
   path,
   threads,
   commenting,
+  annotations,
+  showAnnotations,
 }: {
   ln: Line;
   path: string;
   threads: CommentThread[];
   commenting?: DiffCommentApi;
+  /** Annotations anchored to this line; bars/labels always show, bodies only when `showAnnotations`. */
+  annotations?: DiffAnnotation[];
+  showAnnotations?: boolean;
 }) {
   const t = useTranslations("shell");
   const [hover, setHover] = React.useState(false);
@@ -37,6 +44,8 @@ export function CodeLine({
   const sign = ln.kind === "add" ? "+" : ln.kind === "del" ? "−" : "";
   const target = commenting?.canComment ? commentTargetFor(ln) : null;
   const showAdd = hover && !!target && !composing;
+  const mark = annotations?.find((a) => a.mark)?.mark ?? null;
+  const MarkIcon = mark ? Icon[mark.icon] : null;
 
   return (
     <div
@@ -44,7 +53,7 @@ export function CodeLine({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div style={lineRowFor(ln.kind)}>
+      <div style={mark ? { ...lineRowFor(ln.kind), ...markRowFor(mark.color) } : lineRowFor(ln.kind)}>
         <span className="mono tnum" style={{ ...s.lineNo, position: "relative" }}>
           {showAdd && target && (
             <button
@@ -65,7 +74,20 @@ export function CodeLine({
         <span className="mono" style={s.lineText}>
           {ln.text || " "}
         </span>
+        {mark && MarkIcon && (
+          <span style={markLabelFor(mark.color)}>
+            <MarkIcon size={12} />
+            {mark.label}
+          </span>
+        )}
       </div>
+
+      {showAnnotations &&
+        annotations?.map((a) => (
+          <div key={a.id} style={cs.annotation}>
+            {a.body}
+          </div>
+        ))}
 
       {commenting &&
         commenting.showComments &&

@@ -4,10 +4,12 @@
   "steps": [
     { "cmd": ["open", "{BASE}/agents"], "label": "load the agents page" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "agents fetch settles" },
+    { "cmd": ["wait", "--text", "Test Quality Reviewer"], "label": "seeded agent card is visible" },
     { "cmd": ["find", "text", "Test Quality Reviewer", "click"], "label": "open the test quality reviewer" },
     { "cmd": ["wait", "--url", "/agents/"], "label": "agent editor route reached" },
+    { "cmd": ["wait", "--text", "Configuration"], "label": "agent editor config tab renders" },
     { "cmd": ["find", "role", "button", "click", "--name", "Skills"], "label": "switch to the skills tab" },
-    { "cmd": ["wait", "--text", "3 of 3 enabled"], "label": "seeded skills are linked" },
+    { "cmd": ["wait", "--text", "3 of 7 enabled"], "label": "seeded skills are linked (3 of the 7 seeded workspace skills)" },
     { "cmd": ["wait", "--text", "Edge Case Checklist"], "label": "a linked skill is listed" }
   ]
 }
