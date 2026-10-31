@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { and, eq } from 'drizzle-orm';
+import { z } from 'zod';
+import { PollResult } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -11,13 +13,18 @@ import { NotFoundError } from '../../platform/errors.js';
  * (new/updated PRs appear, head_sha updates). It does NOT trigger any review —
  * review is manual (user presses Run Review, owned by A2).
  *
- *   POST /repos/:id/poll  → sync PR list from GitHub, bump last_polled_at
+ *   POST /repos/:id/poll?limit=N  → sync up to N PRs from GitHub, bump last_polled_at
  */
+const PollQuery = z.object({ limit: z.coerce.number().int().min(1).max(100).optional() });
+
 export default async function pollingRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const { container } = app;
 
-  app.post('/repos/:id/poll', { schema: { params: IdParams } }, async (req) => {
+  app.post(
+    '/repos/:id/poll',
+    { schema: { params: IdParams, querystring: PollQuery, response: { 200: PollResult } } },
+    async (req) => {
     const { workspaceId } = await getContext(container, req);
     const [repo] = await container.db
       .select()
@@ -26,7 +33,8 @@ export default async function pollingRoutes(appBase: FastifyInstance) {
     if (!repo) throw new NotFoundError('Repo not found');
 
     const gh = await container.github();
-    const pulls = await gh.listPullRequests({ owner: repo.owner, name: repo.name });
+    const all = await gh.listPullRequests({ owner: repo.owner, name: repo.name });
+    const pulls = req.query.limit ? all.slice(0, req.query.limit) : all;
     let synced = 0;
     for (const pr of pulls) {
       await container.db
@@ -57,12 +65,14 @@ export default async function pollingRoutes(appBase: FastifyInstance) {
         });
       synced++;
     }
+    const polledAt = new Date();
     await container.db
       .update(t.repos)
-      .set({ lastPolledAt: new Date() })
+      .set({ lastPolledAt: polledAt })
       .where(eq(t.repos.id, repo.id));
 
     // NOTE: no review is triggered here — manual trigger only.
-    return { synced, reviewTriggered: false };
-  });
+    return { synced, reviewTriggered: false, polled_at: polledAt.toISOString() };
+  },
+  );
 }
