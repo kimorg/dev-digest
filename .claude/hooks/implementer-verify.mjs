@@ -13,7 +13,7 @@ import { join, relative, resolve, sep } from 'node:path';
 const MAX_BLOCKS = 2;
 const MAX_ERROR_LINES = 30;
 const TSC_TIMEOUT_MS = 120_000;
-const PACKAGES = ['server', 'client', 'reviewer-core', 'e2e'];
+const PACKAGES = ['server', 'client', 'reviewer-core', 'e2e', 'mcp'];
 
 const allow = (warning) => {
   if (warning) process.stdout.write(JSON.stringify({ systemMessage: `implementer-verify: ${warning}` }));

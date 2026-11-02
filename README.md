@@ -14,6 +14,7 @@ aliases, not published modules):
 | `server/`        | `@devdigest/api`            | Fastify API + Drizzle/Postgres (pgvector)             | 3001 |
 | `client/`        | `@devdigest/web`            | Next.js 15 web app (the studio)                       | 3000 |
 | `reviewer-core/` | `@devdigest/reviewer-core`  | Pure review engine: diff → prompt → LLM → findings    | —    |
+| `mcp/`           | `@devdigest/mcp`            | MCP server (stdio) for Claude Code: thin client of the API | —    |
 | `e2e/`           | `@devdigest/e2e`            | Deterministic browser e2e (agent-browser)             | —    |
 | `server/src/vendor/shared` | `@devdigest/shared` | Zod contracts shared across every package             | —    |
 
@@ -43,6 +44,13 @@ flowchart LR
   API -->|"run review"| ENGINE
   ENGINE --> LLM
 
+  CC["Claude Code<br/>.mcp.json"]
+  MCP["mcp/<br/>devdigest-mcp · stdio"]
+  INS["MCP Inspector<br/>(optional)"]
+  CC <-->|"stdio JSON-RPC"| MCP
+  INS -.->|"manual testing"| MCP
+  MCP -->|"HTTP"| API
+
   SHARED["@devdigest/shared<br/>Zod contracts"]
   SHARED -.->|"one schema, every package"| WEB
   SHARED -.-> API
@@ -61,6 +69,7 @@ Each package has its own README with deeper diagrams:
 [`client`](client/README.md) (UI route map) ·
 [`server`](server/README.md) (API map) ·
 [`reviewer-core`](reviewer-core/README.md) (review pipeline) ·
+[`mcp`](mcp/README.md) (MCP tools) ·
 [`e2e`](e2e/README.md).
 
 ## What works on day 1
@@ -82,7 +91,7 @@ These are intentionally **not** in the starter — each lesson adds one back:
 | L01 | Run cost badge · severity filter on findings |
 | L02 | Skills in the product · Conventions extractor |
 | L03 | Intent layer · Smart Diff |
-| L04 | `devdigest-mcp` server · Blast Radius (reads `repo-intel`) |
+| L04 | `devdigest-mcp` server (`mcp/`, registered in `.mcp.json`) · Blast Radius (reads `repo-intel`) |
 | L05 | Project Context Folder · Onboarding generator · PR Brief card |
 | L06 | Eval pipeline · Secret/Phantom gates · Plan Verifier · Export to CI |
 | L07 | Multi-agent review · Run Trace / Live Log · Persistent memory · per-agent stats |
@@ -112,6 +121,10 @@ Flags: `--no-seed` · `--no-client` · `--db-only` · `--help`.
 
 > Add your keys in `server/.env` (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`,
 > `GITHUB_TOKEN`) or via the Settings UI at runtime.
+
+The MCP server (`mcp/`) is **not** started by `dev.sh`. To try its tools in the MCP Inspector web UI, keep
+the API running and run `./scripts/mcp-inspector.sh` in another terminal. See
+[mcp/README.md](mcp/README.md#testing-with-mcp-inspector-recommended-optional).
 
 ## Manual steps (what the script does)
 
@@ -143,6 +156,7 @@ path filter — full strategy in **[`TESTING.md`](TESTING.md)**.
 | server unit (hermetic) | `server-unit.yml` | no |
 | server integration (real Postgres) | `server-integration.yml` | yes |
 | reviewer-core (engine) | `reviewer-core.yml` | no |
+| mcp (unit + in-memory MCP + stdio, API mocked) | `mcp.yml` | no |
 | web e2e (agent-browser, real stack) | `e2e-web.yml` | yes |
 
 Server tests split by filename: `*.it.test.ts` are DB-backed (testcontainers

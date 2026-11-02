@@ -8,18 +8,27 @@ import type {
   PrReviewComment,
   FindingsCounts,
 } from '@devdigest/shared';
-import { PrCommentInput } from '@devdigest/shared';
+import { PrCommentInput, PrMeta as PrMetaSchema } from '@devdigest/shared';
+import { z } from 'zod';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
+import { buildPullService } from './wiring.js';
+
+const RepoPullParams = z.object({
+  id: z.string().uuid(),
+  number: z.coerce.number().int().positive(),
+});
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
  *   GET /repos/:id/pulls → list PRs for a repo (open + recently merged/closed,
  *                          synced from GitHub, persisted). `status` is GitHub's
  *                          merge state (open/merged/closed).
+ *   GET /repos/:id/pulls/:number → one imported PR's metadata by number; DB only,
+ *                          no GitHub sync, no writes (404 if not imported yet)
  *   GET /pulls/:id       → full PR detail (diff/files, commits, body, linked issue)
  *
  * Import is idempotent (unique repo_id+number). Review trigger is MANUAL
@@ -28,6 +37,16 @@ import { deriveReviewStatus } from './status.js';
 export default async function pullsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const { container } = app;
+  const pullService = buildPullService(container);
+
+  app.get(
+    '/repos/:id/pulls/:number',
+    { schema: { params: RepoPullParams, response: { 200: PrMetaSchema } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return pullService.getByNumber(workspaceId, req.params.id, req.params.number);
+    },
+  );
 
   app.get('/repos/:id/pulls', { schema: { params: IdParams } }, async (req): Promise<PrMeta[]> => {
     const { workspaceId } = await getContext(container, req);

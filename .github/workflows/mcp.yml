@@ -1,0 +1,47 @@
+# mcp suite — the DevDigest MCP server (@devdigest/mcp).
+# A thin stdio client of the HTTP API; tests are hermetic (the API is mocked, no
+# Docker, no LLM, no live server). Uses npm (package-lock.json).
+name: mcp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mcp/**'
+      - '.mcp.json'
+      - '.github/workflows/mcp.yml'
+  pull_request:
+    paths:
+      - 'mcp/**'
+      - '.mcp.json'
+      - '.github/workflows/mcp.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck (src + test)
+        run: npm run typecheck
+
+      - run: npm test
