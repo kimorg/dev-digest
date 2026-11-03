@@ -1,6 +1,7 @@
 import type { DevDigestApi } from '../src/ports.js';
 import type {
   ApiAgent,
+  ApiBlastRadius,
   ApiConventions,
   ApiPull,
   ApiRepo,
@@ -16,6 +17,7 @@ export interface FakeApiState {
   runs: ApiRun[]; // newest first
   reviews: ApiReview[]; // newest first
   conventions: ApiConventions;
+  blast: ApiBlastRadius;
   /** Called on every `listRuns` — lets a test advance the run state. */
   onListRuns?: (state: FakeApiState, call: number) => void;
   /** When set, `listRuns` throws it (after `onListRuns`). */
@@ -42,6 +44,7 @@ export function makeState(over: Partial<FakeApiState> = {}): FakeApiState {
     runs: [],
     reviews: [],
     conventions: { scan: null, candidates: [] },
+    blast: { changed_symbols: [], downstream: [], summary: '', degraded: false, reason: null },
     startedRunId: 'run-new',
     calls: [],
     ...over,
@@ -75,5 +78,6 @@ export function fakeApi(state: FakeApiState): DevDigestApi {
     },
     listReviews: async () => (state.calls.push('listReviews'), state.reviews),
     getConventions: async () => (state.calls.push('getConventions'), state.conventions),
+    getBlastRadius: async () => (state.calls.push('getBlastRadius'), state.blast),
   };
 }

@@ -3,6 +3,7 @@ import { ToolError } from './errors.js';
 import {
   pickLatestResult,
   toAgentList,
+  toBlastRadiusResult,
   toConventionsResult,
   toReviewResult,
   toRunningResult,
@@ -10,7 +11,7 @@ import {
 import type { DevDigestApi } from './ports.js';
 import { resolveAgent, resolvePull, resolveRepo } from './resolve.js';
 import { runAndWait } from './run-and-wait.js';
-import type { AgentSummary, ConventionsResult, ReviewResult, RunningResult } from './types.js';
+import type { AgentSummary, BlastRadiusResult, ConventionsResult, ReviewResult, RunningResult } from './types.js';
 
 export interface ServiceOptions {
   api: DevDigestApi;
@@ -129,5 +130,13 @@ export class DevDigestService {
       );
     }
     return toConventionsResult(repo.full_name, data);
+  }
+
+  async getBlastRadius(repoName: string, pr: number): Promise<BlastRadiusResult> {
+    const repo = await resolveRepo(this.api, repoName);
+    const pull = await resolvePull(this.api, repo, pr);
+    // Prime pr_files the way the UI does; the blast read needs them.
+    await this.api.refreshPull(pull.id);
+    return toBlastRadiusResult(repo.full_name, pr, await this.api.getBlastRadius(pull.id));
   }
 }

@@ -3,10 +3,12 @@ import {
   clip,
   pickLatestResult,
   toAgentList,
+  toBlastRadiusResult,
   toConventionsResult,
   toReviewResult,
 } from '../src/format.js';
-import type { ApiFinding, ApiReview, ApiRun, ApiSeverity } from '../src/types.js';
+import { RESPONSE_MAX } from '../src/constants.js';
+import type { ApiBlastRadius, ApiFinding, ApiReview, ApiRun, ApiSeverity } from '../src/types.js';
 
 const finding = (over: Partial<ApiFinding> = {}): ApiFinding => ({
   severity: 'WARNING',
@@ -258,5 +260,78 @@ describe('list / conventions formatters', () => {
     });
     expect(out.conventions.map((c) => c.rule)).toEqual(['accepted one', 'pending one']);
     expect(out.conventions[0]?.evidence).toBe('b.ts:4-9');
+  });
+});
+
+describe('toBlastRadiusResult', () => {
+  const impact = (i: number, callers: number) => ({
+    symbol: `symbol${i}`.padEnd(200, 'x'),
+    callers: Array.from({ length: callers }, (_, j) => ({
+      name: 'c'.repeat(200),
+      file: `${'d/'.repeat(100)}f${j}.ts`,
+      line: 99999,
+    })),
+    endpoints_affected: Array.from({ length: 20 }, (_, j) => `GET /${'e'.repeat(200)}${j}`),
+    crons_affected: Array.from({ length: 20 }, (_, j) => `cron-${'k'.repeat(200)}${j}`),
+  });
+
+  it('maps symbols, caller rows, counts and a forward-leading note when degraded', () => {
+    const blast: ApiBlastRadius = {
+      changed_symbols: [{ name: 'getContext', file: 'src/ctx.ts', kind: 'function' }],
+      downstream: [
+        {
+          symbol: 'getContext',
+          callers: [
+            { name: 'a', file: 'src/a.ts', line: 3 },
+            { name: 'b', file: 'src/b.ts', line: 4 },
+          ],
+          endpoints_affected: ['GET /x'],
+          crons_affected: ['nightly'],
+        },
+      ],
+      summary: 'sum',
+      degraded: true,
+      reason: 'index_partial',
+    };
+    const r = toBlastRadiusResult('acme/api', 7, blast);
+    expect(r.symbols[0]).toMatchObject({ symbol: 'getContext', file: 'src/ctx.ts', callers: ['src/a.ts:3 a', 'src/b.ts:4 b'] });
+    expect(r.counts).toEqual({ symbols: 1, callers: 2, endpoints: 1, crons: 1 });
+    expect(r.degraded).toBe(true);
+    expect(r.reason).toBe('index_partial');
+    expect(r.note).toContain('incomplete');
+    expect(toBlastRadiusResult('acme/api', 7, { ...blast, reason: 'no_data' }).note).toContain('Resync');
+    expect(toBlastRadiusResult('acme/api', 7, { ...blast, reason: 'flag_off' }).note).toContain('REPO_INTEL_ENABLED=false');
+    expect(toBlastRadiusResult('acme/api', 7, { ...blast, degraded: false, reason: null }).note).toBeUndefined();
+  });
+
+  it('caps symbols (20) and callers (60 in total, rank order kept) and says what was omitted', () => {
+    const blast: ApiBlastRadius = {
+      changed_symbols: [],
+      downstream: Array.from({ length: 25 }, (_, i) => impact(i, 10)),
+      summary: 's',
+      degraded: false,
+      reason: null,
+    };
+    const r = toBlastRadiusResult('acme/api', 7, blast);
+    expect(r.symbols).toHaveLength(20);
+    expect(r.symbols.flatMap((s) => s.callers)).toHaveLength(60);
+    expect(r.more_symbols).toBe(5);
+    expect(r.more_callers).toBe(190);
+  });
+
+  it('keeps the worst case (maximal fields everywhere) under the response budget', () => {
+    const blast: ApiBlastRadius = {
+      changed_symbols: Array.from({ length: 30 }, (_, i) => ({
+        name: impact(i, 0).symbol,
+        file: 'f/'.repeat(100),
+        kind: 'function',
+      })),
+      downstream: Array.from({ length: 30 }, (_, i) => impact(i, 30)),
+      summary: 's'.repeat(2000),
+      degraded: true,
+      reason: 'r'.repeat(200),
+    };
+    const size = JSON.stringify(toBlastRadiusResult('acme/' + 'r'.repeat(100), 7, blast)).length;
+    expect(size).toBeLessThanOrEqual(RESPONSE_MAX);
   });
 });

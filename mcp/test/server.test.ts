@@ -59,7 +59,7 @@ describe('devdigest-mcp server', () => {
     expect(res.text).not.toContain('SECRET');
   });
 
-  it('leads forward on errors: unknown agent, PR not imported, blast stub, no scan', async () => {
+  it('leads forward on errors: unknown agent, PR not imported, blast on a PR that is not imported, no scan', async () => {
     const c = await connect();
 
     const agent = await c.callTool('get_findings', { repo: REPO.full_name, pr: 482, agent: 'Nope' });
@@ -74,9 +74,10 @@ describe('devdigest-mcp server', () => {
     expect(repo.text).toContain("Repo 'x/unknown' is not added");
     expect(repo.text).toContain(REPO.full_name);
 
-    const blast = await c.callTool('get_blast_radius', { repo: REPO.full_name, pr: 482 });
+    const blast = await c.callTool('get_blast_radius', { repo: REPO.full_name, pr: 999 });
     expect(blast.isError).toBe(true);
-    expect(blast.text).toContain('not implemented');
+    expect(blast.text).toContain('Pull requests list');
+    expect(blast.text).not.toContain('not implemented');
 
     const scan = await c.callTool('get_conventions', { repo: 'ACME/Payments-API' });
     expect(scan.isError).toBe(true);
@@ -84,6 +85,44 @@ describe('devdigest-mcp server', () => {
 
     const noReview = await c.callTool('get_findings', { repo: REPO.full_name, pr: 482, agent: 'General' });
     expect(noReview.text).toContain('call run_agent_on_pr');
+  });
+
+  it('get_blast_radius primes the PR and returns the compact impact map', async () => {
+    const state = makeState({
+      blast: {
+        changed_symbols: [{ name: 'getContext', file: 'src/ctx.ts', kind: 'function' }],
+        downstream: [
+          {
+            symbol: 'getContext',
+            callers: [{ name: 'routes', file: 'src/a/routes.ts', line: 12 }],
+            endpoints_affected: ['GET /x'],
+            crons_affected: [],
+          },
+        ],
+        summary: '1 changed symbol, 1 caller, 1 endpoint, 0 crons',
+        degraded: false,
+        reason: null,
+      },
+    });
+    const c = await connect(state);
+    const res = await c.callTool('get_blast_radius', { repo: REPO.full_name, pr: 482 });
+
+    expect(res.isError).toBe(false);
+    const body = JSON.parse(res.text);
+    expect(body.symbols[0]).toEqual({
+      symbol: 'getContext',
+      file: 'src/ctx.ts',
+      callers: ['src/a/routes.ts:12 routes'],
+      endpoints: ['GET /x'],
+      crons: [],
+    });
+    expect(body.counts).toEqual({ symbols: 1, callers: 1, endpoints: 1, crons: 0 });
+    expect(body.degraded).toBeUndefined();
+    expect(state.calls.indexOf('refreshPull')).toBeLessThan(state.calls.indexOf('getBlastRadius'));
+
+    const tools = await c.listTools();
+    const t = tools.find((x) => x.name === 'get_blast_radius')!;
+    expect(t.annotations).toMatchObject({ readOnlyHint: true, idempotentHint: true, openWorldHint: false });
   });
 
   it('returns invalid arguments as an error result instead of calling the API', async () => {

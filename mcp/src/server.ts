@@ -35,6 +35,6 @@ export function buildServer({ api, config, sleep, now }: BuildServerOptions): Mc
   registerRunAgentOnPr(server, service);
   registerGetFindings(server, service);
   registerGetConventions(server, service);
-  registerGetBlastRadius(server);
+  registerGetBlastRadius(server, service);
   return server;
 }

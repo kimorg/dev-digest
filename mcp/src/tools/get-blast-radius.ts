@@ -1,22 +1,18 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { ToolError, toToolResult } from '../errors.js';
+import { toToolResult } from '../errors.js';
+import type { DevDigestService } from '../service.js';
 import { prArg, repoArg } from './args.js';
 
-/** Stub: Blast Radius is not built yet. Never calls the API. */
-export function registerGetBlastRadius(server: McpServer): void {
+export function registerGetBlastRadius(server: McpServer, service: DevDigestService): void {
   server.registerTool(
     'get_blast_radius',
     {
-      description: 'NOT IMPLEMENTED YET — will return the PR impact map. Currently always returns an error.',
+      description:
+        'Impact map of a PR from the DevDigest repo index: changed symbols, their callers (file:line), HTTP endpoints and crons that may be affected. Read-only, no LLM. Call before judging a change to shared code.',
       inputSchema: z.object({ repo: repoArg, pr: prArg }),
-      annotations: { readOnlyHint: true, idempotentHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
-    () =>
-      toToolResult(async () => {
-        throw new ToolError(
-          'get_blast_radius is not implemented yet (planned: Blast Radius, L04). For review results call get_findings(repo, pr, agent).',
-        );
-      }),
+    ({ repo, pr }) => toToolResult(() => service.getBlastRadius(repo, pr)),
   );
 }

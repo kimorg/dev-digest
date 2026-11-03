@@ -10,6 +10,8 @@
     { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles" },
     { "cmd": ["wait", "--text", "Add rate limiting to public API endpoints"], "label": "PR title renders on the detail page" },
     { "cmd": ["wait", "--text", "Recalculate"], "label": "intent card renders on overview" },
-    { "cmd": ["wait", "--text", "Add rate limiting to the public API so unauthenticated clients cannot abuse it."], "label": "seeded intent sentence is shown (no model call)" }
+    { "cmd": ["wait", "--text", "Add rate limiting to the public API so unauthenticated clients cannot abuse it."], "label": "seeded intent sentence is shown (no model call)" },
+    { "cmd": ["wait", "--text", "Blast radius"], "label": "blast radius card renders on overview" },
+    { "cmd": ["wait", "--text", "Limited data"], "label": "seed repo is unindexed so the degraded badge shows" }
   ]
 }

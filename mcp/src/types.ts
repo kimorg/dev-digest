@@ -88,6 +88,23 @@ export const ApiConventions = z.object({
 });
 export type ApiConventions = z.infer<typeof ApiConventions>;
 
+/** `BlastRadius` from `GET /pulls/:id/blast`. */
+export const ApiBlastRadius = z.object({
+  changed_symbols: z.array(z.object({ name: z.string(), file: z.string(), kind: z.string() })),
+  downstream: z.array(
+    z.object({
+      symbol: z.string(),
+      callers: z.array(z.object({ name: z.string(), file: z.string(), line: z.number().int() })),
+      endpoints_affected: z.array(z.string()),
+      crons_affected: z.array(z.string()),
+    }),
+  ),
+  summary: z.string(),
+  degraded: z.boolean(),
+  reason: z.string().nullable(),
+});
+export type ApiBlastRadius = z.infer<typeof ApiBlastRadius>;
+
 /** `POST /pulls/:id/review` — only the started runs matter. */
 export const ApiStartReview = z.object({
   runs: z.array(z.object({ run_id: z.string(), agent_id: z.string() })),
@@ -158,6 +175,28 @@ export interface ConventionsResult {
   scan: { status: string; created_at: string };
   conventions: ConventionResult[];
   more_conventions?: number;
+}
+
+export interface BlastSymbolResult {
+  symbol: string;
+  file: string;
+  /** `file:line caller` rows, highest rank first. */
+  callers: string[];
+  endpoints: string[];
+  crons: string[];
+}
+
+export interface BlastRadiusResult {
+  repo: string;
+  pr: number;
+  summary: string;
+  counts: { symbols: number; callers: number; endpoints: number; crons: number };
+  symbols: BlastSymbolResult[];
+  more_symbols?: number;
+  more_callers?: number;
+  degraded?: true;
+  reason?: string;
+  note?: string;
 }
 
 /** What `get_findings` found for one agent on one PR. */

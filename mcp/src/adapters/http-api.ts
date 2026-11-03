@@ -5,6 +5,7 @@ import { ApiError, ApiUnreachableError, ToolError } from '../errors.js';
 import type { DevDigestApi } from '../ports.js';
 import {
   ApiAgent,
+  ApiBlastRadius,
   ApiConventions,
   ApiErrorBody,
   ApiPull,
@@ -91,5 +92,7 @@ export function createHttpApi(
       request('GET', `/pulls/${encodeURIComponent(prId)}/reviews`, z.array(ApiReview)),
     getConventions: (repoId) =>
       request('GET', `/repos/${encodeURIComponent(repoId)}/conventions`, ApiConventions),
+    getBlastRadius: (prId) =>
+      request('GET', `/pulls/${encodeURIComponent(prId)}/blast`, ApiBlastRadius),
   };
 }

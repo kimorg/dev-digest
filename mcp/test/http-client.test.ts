@@ -48,6 +48,18 @@ describe('createHttpApi', () => {
     expect((err as ToolError).message).toContain('out of sync (GET /repos)');
   });
 
+  it('reads the blast map from GET /pulls/:id/blast', async () => {
+    const fetchMock = vi.fn(async () =>
+      json({ changed_symbols: [], downstream: [], summary: 's', degraded: true, reason: 'no_data' }),
+    );
+    const api = apiWith(fetchMock as unknown as typeof fetch);
+
+    const blast = await api.getBlastRadius('pr 1');
+
+    expect(blast.reason).toBe('no_data');
+    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe(`${API_URL}/pulls/pr%201/blast`);
+  });
+
   it('starts a review with the agent id and returns the run id', async () => {
     const fetchMock = vi.fn(async () =>
       json({ pr_id: 'p1', runs: [{ run_id: 'run-1', agent_id: 'a1', agent_name: 'General' }], reviews: [] }),

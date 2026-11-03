@@ -117,8 +117,16 @@ export function PrDetailView() {
         onRunsStarted={refreshRuns}
       />
 
-      <div style={s.body}>
-        {tab === "overview" && <OverviewTab prId={prId} repoId={repoId} prBody={pr.body} />}
+      <div style={s.body(tab === "overview")}>
+        {tab === "overview" && (
+          <OverviewTab
+            prId={prId}
+            repoId={repoId}
+            prBody={pr.body}
+            repoFullName={repoFullName}
+            headSha={pr.head_sha}
+          />
+        )}
 
         {tab === "findings" && (
           <FindingsTab

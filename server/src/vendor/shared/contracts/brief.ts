@@ -57,10 +57,30 @@ export const DownstreamImpact = z.object({
 });
 export type DownstreamImpact = z.infer<typeof DownstreamImpact>;
 
+/** Endpoints and crons reachable from one caller file (caller → endpoint/cron edges of the graph). */
+export const CallerFacts = z.object({
+  file: z.string(),
+  endpoints: z.array(z.string()),
+  crons: z.array(z.string()),
+});
+export type CallerFacts = z.infer<typeof CallerFacts>;
+
+export const BlastDegradedReason = z.enum([
+  'flag_off',
+  'index_failed',
+  'index_partial',
+  'repo_too_large',
+  'no_data',
+]);
+export type BlastDegradedReason = z.infer<typeof BlastDegradedReason>;
+
 export const BlastRadius = z.object({
   changed_symbols: z.array(ChangedSymbol),
   downstream: z.array(DownstreamImpact),
   summary: z.string(),
+  degraded: z.boolean().default(false),
+  reason: BlastDegradedReason.nullable().default(null),
+  caller_facts: z.array(CallerFacts).default([]),
 });
 export type BlastRadius = z.infer<typeof BlastRadius>;
 
@@ -89,12 +109,17 @@ export const PrHistoryItem = z.object({
   merged_at: z.string(),
   author: z.string(),
   files_overlap: z.array(z.string()),
-  notes: z.string(),
+  notes: z.string().default(''),
 });
 export type PrHistoryItem = z.infer<typeof PrHistoryItem>;
 
+export const PrHistoryDegradedReason = z.enum(['no_token', 'github_error']);
+export type PrHistoryDegradedReason = z.infer<typeof PrHistoryDegradedReason>;
+
 export const PrHistory = z.object({
   history: z.array(PrHistoryItem),
+  degraded: z.boolean().default(false),
+  reason: PrHistoryDegradedReason.nullable().default(null),
 });
 export type PrHistory = z.infer<typeof PrHistory>;
 

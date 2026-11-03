@@ -5,20 +5,28 @@
  */
 import {
   AGENT_DESCRIPTION_MAX,
+  CALLER_NAME_MAX,
   CATEGORY_MAX,
+  FACT_MAX,
   FILE_MAX,
   MAX_AGENTS,
+  MAX_BLAST_CALLERS,
+  MAX_BLAST_FACTS,
+  MAX_BLAST_SYMBOLS,
   MAX_CONVENTIONS,
   MAX_FINDINGS,
   RATIONALE_MIN,
   RESPONSE_MAX,
   RULE_MAX,
   SUMMARY_MAX,
+  SYMBOL_MAX,
   TITLE_MAX,
 } from './constants.js';
 import type {
   AgentSummary,
+  BlastRadiusResult,
   ApiAgent,
+  ApiBlastRadius,
   ApiConventions,
   ApiFinding,
   ApiReview,
@@ -274,4 +282,70 @@ export function pickLatestResult(
     };
   }
   return { kind: 'none', lastError: laterFailure?.error ?? null };
+}
+
+const BLAST_NOTES: Record<string, string> = {
+  no_data: 'Repo is not indexed — click Resync in the DevDigest UI for a full map.',
+  flag_off: 'Repo intelligence is off (REPO_INTEL_ENABLED=false) — this is a best-effort scan.',
+  index_partial: 'The repo index is partial — callers may be incomplete.',
+  index_failed: 'The repo index failed — click Resync in the DevDigest UI.',
+  repo_too_large: 'The repo is too large to index — this is a best-effort scan.',
+};
+
+/**
+ * Impact map of a PR: symbols in the API's rank order, callers as `file:line name`. Symbols, callers and the
+ * endpoints/crons per symbol are capped, so the worst case stays under RESPONSE_MAX.
+ */
+export function toBlastRadiusResult(repo: string, pr: number, blast: ApiBlastRadius): BlastRadiusResult {
+  const endpoints = new Set<string>();
+  const crons = new Set<string>();
+  let totalCallers = 0;
+  for (const d of blast.downstream) {
+    totalCallers += d.callers.length;
+    d.endpoints_affected.forEach((e) => endpoints.add(e));
+    d.crons_affected.forEach((c) => crons.add(c));
+  }
+
+  const fileOf = new Map<string, string>();
+  for (const s of blast.changed_symbols) if (!fileOf.has(s.name)) fileOf.set(s.name, s.file);
+
+  const shownSymbols = blast.downstream.slice(0, MAX_BLAST_SYMBOLS);
+  let callerBudget = MAX_BLAST_CALLERS;
+  let shownCallers = 0;
+  const symbols = shownSymbols.map((d) => {
+    const callers = d.callers.slice(0, callerBudget);
+    callerBudget -= callers.length;
+    shownCallers += callers.length;
+    return {
+      symbol: clip(d.symbol, SYMBOL_MAX),
+      file: clip(fileOf.get(d.symbol) ?? '', FILE_MAX),
+      callers: callers.map(
+        (c) => `${clip(c.file, FILE_MAX)}:${c.line} ${clip(c.name, CALLER_NAME_MAX)}`,
+      ),
+      endpoints: d.endpoints_affected.slice(0, MAX_BLAST_FACTS).map((e) => clip(e, FACT_MAX)),
+      crons: d.crons_affected.slice(0, MAX_BLAST_FACTS).map((c) => clip(c, FACT_MAX)),
+    };
+  });
+
+  const omittedSymbols = blast.downstream.length - shownSymbols.length;
+  const omittedCallers = totalCallers - shownCallers;
+  const note = blast.degraded
+    ? (BLAST_NOTES[blast.reason ?? 'no_data'] ?? 'The map is a best-effort scan with limited data.')
+    : undefined;
+  return {
+    repo,
+    pr,
+    summary: clip(blast.summary, SUMMARY_MAX),
+    counts: {
+      symbols: blast.changed_symbols.length,
+      callers: totalCallers,
+      endpoints: endpoints.size,
+      crons: crons.size,
+    },
+    symbols,
+    ...(omittedSymbols > 0 ? { more_symbols: omittedSymbols } : {}),
+    ...(omittedCallers > 0 ? { more_callers: omittedCallers } : {}),
+    ...(blast.degraded ? { degraded: true as const, reason: clip(blast.reason ?? 'no_data', 40) } : {}),
+    ...(note ? { note } : {}),
+  };
 }

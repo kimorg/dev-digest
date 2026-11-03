@@ -82,6 +82,15 @@ files 101+. Not fixed (pre-existing). · **Evidence:** `server/src/adapters/gith
 `server/src/modules/pulls/routes.ts:228` · **Apply when:** a feature needs every changed file of a large
 PR, or file/line totals disagree with `pull_requests.files_count`.
 
+### 2026-11-03 — the seeded PR #482 can never show a real blast radius: the seed repo has no clone
+**Context:** plan 005 Blast Radius, choosing a PR for the "≥ 2 callers + ≥ 1 endpoint" acceptance check. ·
+**Insight:** `db:seed` inserts `acme/payments-api` with `clonePath: null`, so repo-intel has nothing to index and
+`GET /pulls/:id/blast` for PR #482 always returns empty arrays with `degraded: true`. A resync job for that repo
+fails too. Use a real imported (cloned and indexed, `GET /repos/:id/index-state` → `full`) repo for any repo-intel
+demo or manual acceptance; the seed is only good for checking the degraded state. · **Evidence:**
+`server/src/db/seed.ts:93` · **Apply when:** verifying any repo-intel-backed feature (blast radius, context) by hand
+or in e2e.
+
 ## Codebase Patterns
 
 _Conventions and architectural decisions (with the reason) that the code doesn't explain._
@@ -213,6 +222,32 @@ comparison reported 0 new violations with this layout. · **Evidence:** `server/
 `server/src/modules/smart-diff/ports.ts:1`, `server/src/modules/smart-diff/domain.ts` · **Apply when:**
 a pure domain function and a port in the same module need the same input type.
 
+### 2026-11-03 — blast radius is a 1-hop read: `BFS_DEPTH` drives only `getCriticalPaths`
+**Context:** plan 005 Blast Radius; the brief said both `MAX_CALLERS_PER_SYMBOL` and `BFS_DEPTH` limit the blast
+map. · **Insight:** `getBlastRadius` returns only direct references of the changed symbols; `BFS_DEPTH` is read
+only in `getCriticalPaths`. Before plan 005 the facade also applied `MAX_CALLERS_PER_SYMBOL` to the whole caller
+list (one global `slice`) and tagged every fallback `no_data`; S2 made the cap per `viaSymbol` and the reasons
+honest (`flag_off`, `index_failed`, `index_partial` with data). `repo_too_large` is still never produced. ·
+**Evidence:** `server/src/modules/repo-intel/service.ts:392` (per-symbol cap), `:686` (`BFS_DEPTH`),
+`server/test/repo-intel-blast.test.ts` · **Apply when:** a feature promises "depth N" impact, or reads
+`degraded`/`reason` from the repo-intel facade.
+
+### 2026-11-03 — `POST /repos/:id/resync` answers 202 even when no job was enqueued
+**Context:** plan 005, the Resync button on the Blast radius card. · **Insight:** the route swallows enqueue
+errors and still returns 202, with `{ status: 'accepted', degraded: true, reason: 'no_handler' }` instead of
+`{ status: 'accepted', jobId }`. A caller that treats 202 as "queued" will lie to the user; check `degraded` /
+`jobId` in the body. · **Evidence:** `server/src/modules/repo-intel/routes.ts:47-63` · **Apply when:** calling
+resync from the UI, MCP or a script and reporting the outcome.
+
+### 2026-11-03 — `GET /repos/:id/index-state` without a row returns a placeholder: `lastIndexedSha: ''`, epoch `updatedAt`
+**Context:** plan 005 S7, detecting that a resync finished. · **Insight:** the status enum has no "running" value,
+so completion is detected by `lastIndexedSha` / `updatedAt` changing from the value captured at click time. For a
+never-indexed repo the facade returns a synthetic `degraded` state with `lastIndexedSha: ''` and
+`updatedAt: new Date(0)`, so the first real index row always counts as "advanced". Don't treat `status` as a
+progress signal. · **Evidence:** `server/src/modules/repo-intel/service.ts:192-205`,
+`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BlastRadiusCard/helpers.ts:51` ·
+**Apply when:** polling index-state to know when an index or resync job completed.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -336,6 +371,7 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-28 — plan 002 Intent Layer: PR intent is never generated on GET, and `container.prIntent` must stay one cached instance, `MockLLMProvider` reuses the `structured` fixture for every schema, so a run's intent step fails soft in tests
 - 2026-10-28 — plan 002 Revision 3 (drop risk areas): regenerating an uncommitted migration that is already applied locally needs a manual local rollback, run from the main thread
 - 2026-10-28 — plan 003 Smart Diff: PR file lists stop at 100: `getPullRequest` calls `pulls.listFiles` once with `per_page: 100`, types shared by `domain.ts` and `ports.ts` go in the module's `types.ts`
+- 2026-11-03 — plan 005 Blast Radius: the seeded PR #482 can never show a real blast radius: the seed repo has no clone, blast radius is a 1-hop read: `BFS_DEPTH` drives only `getCriticalPaths`, `POST /repos/:id/resync` answers 202 even when no job was enqueued, `GET /repos/:id/index-state` without a row returns a placeholder: `lastIndexedSha: ''`, epoch `updatedAt`
 
 ## Open Questions
 

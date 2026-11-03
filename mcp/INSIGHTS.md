@@ -44,6 +44,14 @@ with 30 escape-only rationales came out at 19 971 chars, not ">19 990". The boun
 field. · **Evidence:** `mcp/src/format.ts` (`clipToJson`), `mcp/test/format.test.ts` ("counts JSON escapes against
 the budget") · **Apply when:** writing a lower-bound size assertion for any budget-fitted text.
 
+### 2026-11-03 — 100 blast callers with per-symbol facts overflow the 20 000-char budget
+**Context:** plan 005 S8, `get_blast_radius` formatter (plan said `MAX_BLAST_CALLERS=100`). · **Insight:** the
+worst-case test (20 symbols, maximal file/symbol strings, endpoints and crons per symbol) did not fit
+`RESPONSE_MAX` with 100 callers. It passes with `MAX_BLAST_CALLERS=60` plus caps on caller name (30), facts per
+symbol (3) and fact length (50). Size the count caps against the worst-case test, not by estimate. ·
+**Evidence:** `mcp/src/constants.ts:33-34`, `mcp/test/format.test.ts` · **Apply when:** adding fields to the blast
+result or raising any blast cap.
+
 ## Codebase Patterns
 
 _Conventions and architectural decisions (with the reason) that the code doesn't explain._
@@ -93,6 +101,7 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-11-02 — Inspector quick-start script: Inspector 2.13.0 resolves `inspector.json`'s relative `command` from the cwd, so run it from `mcp/`
 - 2026-11-02 — severity-prioritized rationale budget: rationales share the 20 000-char response budget by severity instead of a 300-char cap, asserting an exact fill of the JSON budget fails when rationales contain escapes
 - 2026-11-02 — fair share within a severity: inside one severity rationales are water-filled, not served in API order
+- 2026-11-03 — plan 005 Blast Radius (`get_blast_radius`): 100 blast callers with per-symbol facts overflow the 20 000-char budget
 
 ## Open Questions
 

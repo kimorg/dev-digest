@@ -36,7 +36,7 @@ Registered in this order (Claude Code shows them as `mcp__devdigest__<name>`). A
 | `run_agent_on_pr` | `repo`, `pr`, `agent` | Runs one agent, waits up to ~110 s, returns verdict, score, findings. Spends LLM credits. After the timeout returns `status: "running"` + `run_id`; then call `get_findings`. A run already in flight is re-attached, not duplicated. |
 | `get_findings` | `repo`, `pr`, `agent` | Latest finished review of that agent. Read-only, free. |
 | `get_conventions` | `repo` | Extracted house rules with `path:a-b` evidence. Does not start a scan. |
-| `get_blast_radius` | `repo`, `pr` | Not implemented yet: always an error. |
+| `get_blast_radius` | `repo`, `pr` | Impact map of the PR from the repo index: changed symbols, callers (`file:line`), endpoints and crons. Read-only, no LLM; primes the PR like the UI does. At most 20 symbols / 60 callers. When the repo is unindexed the result carries `degraded` + a `note` (Resync in the DevDigest UI). |
 
 `agent` is an id or an exact name (case-insensitive) from `list_agents`.
 

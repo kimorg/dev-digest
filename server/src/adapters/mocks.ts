@@ -17,6 +17,7 @@ import type {
   OpenPrPayload,
   CommitFilesPayload,
   IssueMeta,
+  AssociatedPullRef,
   GitClient,
   CloneOptions,
   UnifiedDiff,
@@ -125,6 +126,10 @@ export interface MockGitHubOptions {
   login?: string;
   /** Existing inline review comments returned by listReviewComments. */
   comments?: PrReviewComment[];
+  /** Commit shas returned by listCommitShasForPath, per file path. */
+  commitShas?: Record<string, string[]>;
+  /** Pull requests returned by listPullsForCommit, per commit sha. */
+  pullsForCommit?: Record<string, AssociatedPullRef[]>;
 }
 
 export class MockGitHubClient implements GitHubClient {
@@ -132,6 +137,8 @@ export class MockGitHubClient implements GitHubClient {
   public openedPrs: OpenPrPayload[] = [];
   public committed: CommitFilesPayload[] = [];
   public createdComments: CreateReviewCommentInput[] = [];
+  /** Every history lookup, in order — lets tests count GitHub requests. */
+  public historyCalls: { kind: 'commits' | 'pulls'; key: string }[] = [];
 
   constructor(private opts: MockGitHubOptions = {}) {}
 
@@ -236,6 +243,20 @@ export class MockGitHubClient implements GitHubClient {
 
   async currentLogin(): Promise<string> {
     return this.opts.login ?? 'mock-user';
+  }
+
+  async listCommitShasForPath(
+    _repo: RepoRef,
+    path: string,
+    opts: { ref: string; limit: number },
+  ): Promise<string[]> {
+    this.historyCalls.push({ kind: 'commits', key: path });
+    return (this.opts.commitShas?.[path] ?? []).slice(0, opts.limit);
+  }
+
+  async listPullsForCommit(_repo: RepoRef, sha: string): Promise<AssociatedPullRef[]> {
+    this.historyCalls.push({ kind: 'pulls', key: sha });
+    return this.opts.pullsForCommit?.[sha] ?? [];
   }
 }
 

@@ -1,6 +1,7 @@
 /** The port the core needs: the DevDigest HTTP API, shaped by this package's use cases. */
 import type {
   ApiAgent,
+  ApiBlastRadius,
   ApiConventions,
   ApiPull,
   ApiRepo,
@@ -22,4 +23,6 @@ export interface DevDigestApi {
   /** Reviews of the PR, newest first. */
   listReviews(prId: string): Promise<ApiReview[]>;
   getConventions(repoId: string): Promise<ApiConventions>;
+  /** `GET /pulls/:id/blast` — the PR's impact map from the repo index; read-only, no LLM. */
+  getBlastRadius(prId: string): Promise<ApiBlastRadius>;
 }

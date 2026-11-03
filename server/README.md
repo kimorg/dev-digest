@@ -66,6 +66,7 @@ flowchart TB
   subgraph Repos_PRs["Repos & PRs"]
     repos["repos<br/>/repos"]
     pulls["pulls<br/>/pulls/:id · /repos/:id/pulls/:number · /pulls/:id/comments"]
+    blast["blast · pr-history<br/>/pulls/:id/blast · /pulls/:id/history"]
     polling["polling<br/>/repos/:id/poll"]
   end
   subgraph Review["Review & runs"]
