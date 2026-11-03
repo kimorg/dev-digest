@@ -99,4 +99,14 @@ jobs.register('poll_repo', handler);
     expect(crons.some((c) => c.includes('*/5'))).toBe(true);
     expect(crons).toContain('job:poll_repo');
   });
+
+  it('detects kebab-case background job kinds', () => {
+    const src = `
+jobs.register('repo-intel-index', handler);
+await jobs.enqueue(workspaceId, 'repo-clone', payload);
+`;
+    const crons = extractCrons(src);
+    expect(crons).toContain('job:repo-intel-index');
+    expect(crons).toContain('job:repo-clone');
+  });
 });
