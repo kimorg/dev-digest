@@ -233,7 +233,7 @@ export function buildMarker(plan, findings, at = new Date().toISOString(), check
 
 const TS_SOURCE = /\.(ts|tsx|mts|cts)$/;
 const TS_SETUP = /(^|\/)(tsconfig[^/]*\.json|package\.json)$/;
-export const TYPECHECK_PACKAGES = ['server', 'client', 'reviewer-core', 'e2e'];
+export const TYPECHECK_PACKAGES = ['server', 'client', 'reviewer-core', 'e2e', 'mcp'];
 
 /** Packages to typecheck. server and reviewer-core share code through path aliases, so either pulls in both. */
 export function typecheckTargets(files) {

@@ -1,6 +1,6 @@
 # Testing & CI strategy
 
-DevDigest is four independent packages (no workspace), so testing is organised
+DevDigest is five independent packages (no workspace), so testing is organised
 as **one suite per package**, each with its own CI workflow, runner, and path
 filter. A package's suite runs only when that package (or a package it depends
 on at type-check time) changes.
@@ -30,6 +30,7 @@ If a test wouldn't catch a class of regression we care about, we don't write it.
 | server-unit | `server/` | unit (hermetic) | vitest | `server-unit.yml` | no |
 | server-integration | `server/` | integration (real Postgres) | vitest | `server-integration.yml` | **yes** |
 | reviewer-core | `reviewer-core/` | unit (engine) | vitest | `reviewer-core.yml` | no |
+| mcp | `mcp/` | unit + in-memory MCP + stdio process (API mocked) | vitest | `mcp.yml` | no |
 | e2e web | `e2e/` | browser e2e (deterministic) | agent-browser + `run.ts` | `e2e-web.yml` | yes (stack) |
 
 ## What each suite covers
@@ -52,6 +53,9 @@ Docker is unavailable.
 **reviewer-core** — the pure engine: `toReview` selection, prompt construction,
 and a `run` with a stubbed model → grounded findings. No DB / GitHub / FS.
 
+**mcp** — the MCP server (`devdigest-mcp`): wire client, formatters, the run-and-wait loop, tool
+registration over an in-memory transport, and one real stdio process. The HTTP API is mocked; no Docker, no LLM.
+
 **e2e web** — see `e2e/README.md`. Deterministic agent-browser flows over the
 main journeys (boot → PR list → PR detail; agents) against a real seeded stack.
 No `chat`, no model key.
@@ -62,6 +66,7 @@ No `chat`, no model key.
 # per package
 cd client        && pnpm test           # + pnpm typecheck
 cd reviewer-core && npm test           # + npm run typecheck (src + test)
+cd mcp           && npm test           # + npm run typecheck (src + test)
 cd server        && pnpm typecheck     # src + test (tsconfig.test.json)
 
 # server — the unit/integration split (see note below)
@@ -74,6 +79,8 @@ cd server && pnpm test                                          # both
 npm i -g agent-browser && agent-browser install
 cd e2e && npm install && npm test
 ```
+
+MCP Inspector is an optional manual tool, not a suite — see `mcp/README.md`.
 
 ## Conventions
 

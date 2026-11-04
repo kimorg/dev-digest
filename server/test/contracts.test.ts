@@ -6,6 +6,7 @@ import {
   BlastRadius,
   Risks,
   PrHistory,
+  PrBrief,
   SmartDiff,
   SmartDiffRole,
   Conformance,
@@ -118,6 +119,40 @@ describe('AI contracts parse fixtures', () => {
         ],
       }),
     ).not.toThrow();
+  });
+
+  it('BlastRadius: degraded/reason default for old payloads, unknown reason rejected', () => {
+    const base = {
+      changed_symbols: [{ name: 'rateLimit', file: 'a.ts', kind: 'function' }],
+      downstream: [],
+      summary: 's',
+    };
+    const old = BlastRadius.parse(base);
+    expect(old.degraded).toBe(false);
+    expect(old.reason).toBeNull();
+    expect(old.caller_facts).toEqual([]);
+    expect(BlastRadius.parse({ ...base, degraded: true, reason: 'index_partial' }).reason).toBe(
+      'index_partial',
+    );
+    expect(() => BlastRadius.parse({ ...base, reason: 'bogus' })).toThrow();
+    const brief = PrBrief.parse({
+      intent: { intent: 'x', in_scope: [], out_of_scope: [] },
+      blast: base,
+      risks: { risks: [] },
+      history: { history: [] },
+    });
+    expect(brief.blast.degraded).toBe(false);
+  });
+
+  it('PrHistory: notes default to empty, degraded/reason default for old payloads', () => {
+    const h = PrHistory.parse({
+      history: [{ pr_number: 1, title: 't', merged_at: '2026-01-01', author: 'a', files_overlap: [] }],
+    });
+    expect(h.history[0]!.notes).toBe('');
+    expect(h.degraded).toBe(false);
+    expect(h.reason).toBeNull();
+    expect(PrHistory.parse({ history: [], degraded: true, reason: 'no_token' }).reason).toBe('no_token');
+    expect(() => PrHistory.parse({ history: [], reason: 'bogus' })).toThrow();
   });
 
   it('SmartDiff (data.jsx DIFF)', () => {

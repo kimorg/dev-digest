@@ -33,6 +33,7 @@ import type {
   BlastCallerRow,
   BlastChangedSymbol,
   BlastResult,
+  DegradedReason,
   FileRankRow,
   IndexResult,
   IndexState,
@@ -220,9 +221,15 @@ export class RepoIntelService implements RepoIntel {
   async getBlastRadius(repoId: string, changedFiles: string[]): Promise<BlastResult> {
     // T3: serve from the persistent index when it's built. Falls through to the
     // ripgrep best-effort below when the flag is off / index is absent.
-    if (this.container.config.repoIntelEnabled && changedFiles.length > 0) {
-      const persistent = await this.tryPersistentBlast(repoId, changedFiles);
-      if (persistent) return persistent;
+    // Why the persistent index is not used (reported on the fallback result).
+    let fallbackReason: DegradedReason = 'flag_off';
+    if (this.container.config.repoIntelEnabled) {
+      const state = await this.repo.tryGetIndexState(repoId);
+      if (state && changedFiles.length > 0) {
+        const persistent = await this.tryPersistentBlast(repoId, changedFiles, state);
+        if (persistent) return persistent;
+      }
+      fallbackReason = state ? 'index_failed' : 'no_data';
     }
 
     const empty: BlastResult = {
@@ -230,7 +237,7 @@ export class RepoIntelService implements RepoIntel {
       callers: [],
       impactedEndpoints: [],
       degraded: true,
-      reason: 'no_data',
+      reason: fallbackReason,
     };
 
     const repo = await this.repo.getRepoBasics(repoId);
@@ -299,7 +306,7 @@ export class RepoIntelService implements RepoIntel {
       callers: callerRows,
       impactedEndpoints: [...endpoints],
       degraded: true,
-      reason: 'no_data',
+      reason: fallbackReason,
     };
   }
 
@@ -315,9 +322,9 @@ export class RepoIntelService implements RepoIntel {
   private async tryPersistentBlast(
     repoId: string,
     changedFiles: string[],
+    state: IndexState,
   ): Promise<BlastResult | null> {
-    const state = await this.repo.tryGetIndexState(repoId);
-    if (!state || (state.status !== 'full' && state.status !== 'partial')) return null;
+    if (state.status !== 'full' && state.status !== 'partial') return null;
 
     // Changed symbols = declared in a changed file. Skip the qualified
     // `Class.method` dual-emit (the bare form already covers the name).
@@ -335,7 +342,14 @@ export class RepoIntelService implements RepoIntel {
       nameSet.add(s.name);
     }
     if (nameSet.size === 0) {
-      return { changedSymbols, callers: [], impactedEndpoints: [], degraded: false };
+      return {
+        changedSymbols,
+        callers: [],
+        impactedEndpoints: [],
+        ...(state.status === 'partial'
+          ? { degraded: true, reason: 'index_partial' as const }
+          : { degraded: false }),
+      };
     }
 
     // Resolved cross-file callers.
@@ -370,6 +384,13 @@ export class RepoIntelService implements RepoIntel {
       });
     }
     callers.sort((a, b) => b.rank - a.rank);
+    // Cap per changed symbol (highest rank kept), not over the whole result.
+    const perSymbol = new Map<string, number>();
+    const cappedCallers = callers.filter((c) => {
+      const n = perSymbol.get(c.viaSymbol) ?? 0;
+      perSymbol.set(c.viaSymbol, n + 1);
+      return n < MAX_CALLERS_PER_SYMBOL;
+    });
 
     // Precomputed facts per caller file (endpoints + crons), so consumers can
     // attribute them to the changed symbol whose callers live in that file.
@@ -383,10 +404,12 @@ export class RepoIntelService implements RepoIntel {
 
     return {
       changedSymbols,
-      callers: callers.slice(0, MAX_CALLERS_PER_SYMBOL),
+      callers: cappedCallers,
       impactedEndpoints: [...endpoints],
       factsByFile,
-      degraded: false,
+      ...(state.status === 'partial'
+        ? { degraded: true, reason: 'index_partial' as const }
+        : { degraded: false }),
     };
   }
 

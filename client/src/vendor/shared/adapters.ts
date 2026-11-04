@@ -119,6 +119,14 @@ export interface OpenPrPayload {
   body: string;
 }
 
+/** A pull request GitHub associates with a commit (plain data, no SDK types). */
+export interface AssociatedPullRef {
+  number: number;
+  title: string;
+  author: string;
+  merged_at: string | null;
+}
+
 export interface GitHubClient {
   listPullRequests(repo: RepoRef): Promise<PrMeta[]>;
   getPullRequest(repo: RepoRef, n: number): Promise<PrDetail>;
@@ -135,6 +143,14 @@ export interface GitHubClient {
   getIssue(repo: RepoRef, n: number): Promise<IssueMeta>;
   /** GET /user — for "posting as @user". */
   currentLogin(): Promise<string>;
+  /** Newest-first shas of commits on `opts.ref` that touched `path` (at most `opts.limit`). */
+  listCommitShasForPath(
+    repo: RepoRef,
+    path: string,
+    opts: { ref: string; limit: number },
+  ): Promise<string[]>;
+  /** Pull requests GitHub associates with a commit (merged or not). */
+  listPullsForCommit(repo: RepoRef, sha: string): Promise<AssociatedPullRef[]>;
 }
 
 // ---------- Git (simple-git, heavy) ----------

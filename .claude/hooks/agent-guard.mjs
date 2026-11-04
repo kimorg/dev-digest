@@ -17,7 +17,7 @@ const block = (reason) => {
   process.exit(2);
 };
 
-const PKG = '(?:server|client|reviewer-core|e2e)';
+const PKG = '(?:server|client|reviewer-core|e2e|mcp)';
 const WRITE_PATHS = {
   'test-writer': [
     /^server\/test\//,
@@ -25,6 +25,7 @@ const WRITE_PATHS = {
     /^client\/src\/.+\.test\.tsx?$/,
     /^client\/src\/test\//,
     /^reviewer-core\/test\//,
+    /^mcp\/test\//,
     /^e2e\/specs\/\d{2}-[a-z0-9-]+\.flow\.json$/,
   ],
   'doc-writer': [

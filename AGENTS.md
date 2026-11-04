@@ -5,17 +5,18 @@ one feature back. Overview, architecture and lesson table: [README](README.md).
 
 ## Packages
 
-Four standalone packages — each has its own `AGENTS.md` with stack, commands and rules.
+Five standalone packages — each has its own `AGENTS.md` with stack, commands and rules.
 
 | Folder           | Package                    | Role                                        | Port | PM   |
 |------------------|----------------------------|---------------------------------------------|------|------|
 | `server/`        | `@devdigest/api`           | Fastify API + Postgres, runs reviews        | 3001 | pnpm |
 | `client/`        | `@devdigest/web`           | Next.js studio UI                           | 3000 | pnpm |
 | `reviewer-core/` | `@devdigest/reviewer-core` | Pure review engine: diff → LLM → findings   | —    | npm  |
+| `mcp/`           | `@devdigest/mcp`           | MCP server (stdio): thin client of the API  | —    | npm  |
 | `e2e/`           | `@devdigest/e2e`           | Deterministic browser flows (agent-browser) | —    | npm  |
 
 Package maps: [server](server/AGENTS.md) · [client](client/AGENTS.md) ·
-[reviewer-core](reviewer-core/AGENTS.md) · [e2e](e2e/AGENTS.md)
+[reviewer-core](reviewer-core/AGENTS.md) · [mcp](mcp/AGENTS.md) · [e2e](e2e/AGENTS.md)
 
 ## Commands
 
@@ -28,7 +29,7 @@ Package maps: [server](server/AGENTS.md) · [client](client/AGENTS.md) ·
 ## Gotchas
 
 - **Not a workspace.** Install inside each package with *its* package manager
-  (`server`/`client` → pnpm, `reviewer-core`/`e2e` → npm). Root `package.json`,
+  (`server`/`client` → pnpm, `reviewer-core`/`mcp`/`e2e` → npm). Root `package.json`,
   `pnpm-lock.yaml` and `pnpm-workspace.yaml` files are git-ignored strays — don't recreate them.
 - Cross-package code is shared via **tsconfig path aliases**, not published packages.
 - `@devdigest/shared` (Zod contracts) is **vendored twice**: `server/src/vendor/shared`
@@ -36,6 +37,8 @@ Package maps: [server](server/AGENTS.md) · [client](client/AGENTS.md) ·
   drifted; a contract change must be applied to both.
 - `server/clones/` is runtime data (imported repos — including a clone of *this* repo).
   Never edit it; exclude it from searches or you'll hit duplicate files.
+- Root `.mcp.json` registers `mcp/` for Claude Code (project scope, stdio). It is not a stray file; the API must be
+  running for the tools to work.
 - CI is path-filtered per package; `reviewer-core/**` also triggers the server workflows.
 
 ## Session protocol

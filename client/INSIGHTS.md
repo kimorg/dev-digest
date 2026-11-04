@@ -289,6 +289,34 @@ adding the dependency. · **Evidence:** `client/package.json`,
 `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/IntentCard/IntentCard.test.tsx` ·
 **Apply when:** writing a client component test or a plan that prescribes `userEvent`.
 
+### 2026-11-03 — the kit `Modal` does not close on Esc: the caller handles the key
+**Context:** plan 005 S10, the Blast radius graph modal. · **Insight:** `vendor/ui/kit/Modal.tsx` has no
+`keydown` handling (only its own "Close" button, `aria-label="Close"`), so "close on Esc" must be added by the
+component that opens it. Restoring focus is also the caller's job: keep `e.currentTarget` from the trigger click
+and focus it on close. · **Evidence:** `client/src/vendor/ui/kit/Modal.tsx`,
+`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BlastRadiusCard/_components/BlastGraphModal/BlastGraphModal.tsx:22` ·
+**Apply when:** opening any kit `Modal` that should be keyboard-dismissable.
+
+### 2026-11-03 — in jsdom a `<wbr>` inside a link adds a space to its accessible name
+**Context:** wrapping long `file:line` caller paths in the Blast radius card with `<wbr>` after each `/`. ·
+**Insight:** `getByRole("link", { name: "src/a.ts:7" })` stopped matching: Testing Library computes the
+name of `<a>src/<wbr />a.ts:7</a>` as `"src/ a.ts:7"` (checked with `logRoles`), since jsdom has no layout and
+treats `<wbr>` as non-inline. Browsers treat `<wbr>` as inline, so the real name has no space. Match such links
+with a function that drops whitespace: `{ name: (n) => n.replace(/\s+/g, "") === path }`. Don't switch to
+zero-width spaces: they end up in copied text. · **Evidence:**
+`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BlastRadiusCard/_components/BlastSymbolItem/BlastSymbolItem.tsx`
+(`pathSegments` + `<wbr />`), `.../BlastSymbolItem/BlastSymbolItem.test.tsx` (`pathName`) · **Apply when:**
+adding break opportunities to text inside a link or button you query by accessible name.
+
+### 2026-11-03 — a fixed-size canvas in the kit `Modal` gets a horizontal scrollbar unless the modal width is derived from it
+**Context:** the Blast radius graph modal showed a scrollbar even for a 2-node graph. · **Insight:** the kit
+`Modal` body has no padding and `overflow: auto`, and `width` is border-box with a 1px border. The graph canvas
+(1032 px) plus its 8 px scroll padding was 1048 px inside `width={1040}`, so it always scrolled. Compute the
+width from the content: `canvas + 2 × scroll padding + 2` (`graphModalWidth`). `maxWidth: 100%` still lets it
+scroll on narrow viewports. · **Evidence:** `client/src/vendor/ui/kit/Modal.tsx:28-60`,
+`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BlastRadiusCard/_components/BlastGraphModal/graph-layout.ts`
+(`graphModalWidth`) · **Apply when:** putting fixed-width content (canvas, SVG, table) into a kit `Modal`.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -309,6 +337,14 @@ the `AppRoutes` union is stale until Next regenerates it, so `pnpm typecheck` fa
 `error TS2344` until then. Run `pnpm exec next typegen` (no dev server or build needed), then
 typecheck again. · **Evidence:** `client/.next/types/validator.ts` · **Apply when:** adding,
 renaming or deleting a `page.tsx`.
+
+### 2026-11-03 — a card test crashes after a sibling query is added: the fetch mock answers every URL with one body
+**Context:** plan 005 S12, adding `PriorPrsBlock` (`/pulls/:id/history`) inside `BlastRadiusCard`. · **Insight:**
+the card tests mocked `fetch` with one fixed JSON body, so the new `/history` query received a `BlastRadius`
+object and the block crashed reading its fields. When a component tree issues more than one query, route the
+mock by URL (`url.endsWith("/history") ? json(HISTORY) : json(body)`). · **Evidence:**
+`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BlastRadiusCard/BlastRadiusCard.test.tsx:45` ·
+**Apply when:** adding a data hook to a child of an already-tested component.
 
 ## Session Notes
 
@@ -333,6 +369,9 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-18 — Conventions evidence → GitHub link: an `Icon.*` inside running text breaks onto its own line: Tailwind's preflight makes `svg` a block
 - 2026-10-28 — plan 002 Intent Layer: `@testing-library/user-event` is not installed: component tests use `fireEvent`
 - 2026-10-28 — plan 003 Smart Diff: sticky elements inside a PR tab must sit below `PrDetailHeader`: use `top: var(--pr-header-h)`, findings refresh on every drop in live runs, not on RunStatus `onDone`
+- 2026-11-03 — plan 005 Blast Radius: the kit `Modal` does not close on Esc: the caller handles the key, a card test crashes after a sibling query is added: the fetch mock answers every URL with one body
+- 2026-11-03 — Overview width + wrapping caller paths + empty Prior PRs: in jsdom a `<wbr>` inside a link adds a space to its accessible name
+- 2026-11-03 — Blast graph modal: no scrollbar, file names only: a fixed-size canvas in the kit `Modal` gets a horizontal scrollbar unless the modal width is derived from it
 
 ## Open Questions
 

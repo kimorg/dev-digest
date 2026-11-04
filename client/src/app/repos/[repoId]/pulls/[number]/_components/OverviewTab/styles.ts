@@ -3,7 +3,10 @@ import type { CSSProperties } from "react";
 export const s = {
   briefRow: {
     display: "grid",
-    gridTemplateColumns: "1fr",
+    // 525 = the former 420 px minimum + 25% (wider Intent / Blast Radius cards);
+    // `min(…, 100%)` lets a single column shrink on narrow screens instead of overflowing.
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(525px, 100%), 1fr))",
+    alignItems: "start",
     gap: 16,
     marginBottom: 20,
   } satisfies CSSProperties,

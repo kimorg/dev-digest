@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join, relative, isAbsolute, basename } from 'node:path';
 
-export const PACKAGES = ['server', 'client', 'reviewer-core', 'e2e'];
+export const PACKAGES = ['server', 'client', 'reviewer-core', 'e2e', 'mcp'];
 
 export const SECTIONS = [
   'What Works',

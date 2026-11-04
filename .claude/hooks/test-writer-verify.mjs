@@ -15,7 +15,7 @@ import { join, relative, resolve, sep } from 'node:path';
 const MAX_BLOCKS = 2;
 const MAX_OUTPUT_LINES = 40;
 const RUN_TIMEOUT_MS = 240_000;
-const PACKAGES = ['server', 'client', 'reviewer-core'];
+const PACKAGES = ['server', 'client', 'reviewer-core', 'mcp'];
 const UNIT_TEST = /\.test\.tsx?$/;
 const INTEGRATION_TEST = /\.it\.test\.ts$/;
 const TEST_HELPER = /^test\/helpers\//;

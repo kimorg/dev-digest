@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "devdigest": {
+      "type": "stdio",
+      "command": "node_modules/.bin/tsx",
+      "args": ["src/index.ts"],
+      "env": { "DEVDIGEST_API_URL": "http://localhost:3001" },
+      "requestTimeout": 150000
+    }
+  }
+}

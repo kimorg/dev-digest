@@ -1,18 +1,55 @@
 {
   "stat": {
-    "symbols": "symbols",
-    "callers": "callers",
-    "endpoints": "endpoints",
-    "crons": "cron/jobs"
+    "symbols": "{count, plural, one {symbol} other {symbols}}",
+    "callers": "{count, plural, one {caller} other {callers}}",
+    "endpoints": "{count, plural, one {endpoint} other {endpoints}}",
+    "crons": "{count, plural, one {cron} other {crons}}"
   },
   "view": {
     "tree": "tree",
-    "graph": "graph"
+    "graph": "Graph"
   },
-  "callerCount": "{count} callers",
+  "callerCount": "{count, plural, one {# caller} other {# callers}}",
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
+  "errorTitle": "Couldn't load the blast radius",
+  "degraded": {
+    "badge": "Limited data",
+    "reason": {
+      "flag_off": "Repo intelligence is turned off, so the map is a best-effort scan.",
+      "index_failed": "The repo index failed to build, so the map is a best-effort scan.",
+      "index_partial": "The repo index is partial, so some callers may be missing.",
+      "repo_too_large": "The repo is too large to index, so the map is a best-effort scan.",
+      "no_data": "This repo is not indexed yet, so the map may be empty or incomplete."
+    },
+    "resync": "Resync index",
+    "resyncRunning": "Re-indexing…",
+    "resyncDone": "Index updated — the map is refreshed.",
+    "resyncSlow": "Still indexing — refresh later.",
+    "resyncFailed": "Couldn't start the resync — the job queue is unavailable.",
+    "hint": {
+      "flag_off": "Set REPO_INTEL_ENABLED=true on the server to get a full map.",
+      "repo_too_large": "A resync won't help: the repo exceeds the indexing limit."
+    }
+  },
   "graph": {
     "empty": "No downstream callers to graph.",
-    "ariaLabel": "Blast radius graph"
+    "ariaLabel": "Blast radius graph",
+    "title": "Blast radius graph",
+    "legend": {
+      "symbols": "Symbols",
+      "callers": "Callers",
+      "endpoints": "Endpoints",
+      "crons": "Crons"
+    }
+  },
+  "history": {
+    "title": "Prior PRs touching these files",
+    "empty": "No prior merged PRs found for these files.",
+    "overlap": "Touches",
+    "loadError": "Couldn't load prior PRs.",
+    "reason": {
+      "no_token": "Add a GitHub token in Settings to see prior PRs.",
+      "github_error": "GitHub is unreachable right now, so prior PRs are unavailable."
+    }
   }
 }

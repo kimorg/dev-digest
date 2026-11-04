@@ -42,7 +42,7 @@ export function useRepoIntelStatus(repoId: string | null | undefined, poll = fal
 export function useResyncRepoIntel(repoId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.post<{ status: string }>(`/repos/${repoId}/resync`),
+    mutationFn: () => api.post<{ status: string; degraded?: boolean; reason?: string }>(`/repos/${repoId}/resync`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.repoIntelState(repoId) });
     },
