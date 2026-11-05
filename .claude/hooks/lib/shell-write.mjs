@@ -44,6 +44,18 @@ const INLINE_INTERPRETER = [
 ];
 // Running a script the agent stored in a temp dir (Write → /tmp/x.py → python3 /tmp/x.py).
 const TMP_SCRIPT = /\b(?:python3?|node|perl|ruby|bash|sh|zsh|tsx)\s+(?:[^\s|;&]+\s+)*?(?:\/tmp\/|\$\{?TMPDIR\}?)/;
+// A nested shell or eval gets its script as a quoted argument, a heredoc body or stdin, all hidden from
+// the checks above — `bash -c 'echo x > src/a.ts'` would pass. Block the wrapper itself:
+// bash -c / /bin/sh -c / xargs sh -c, bash <<EOF / sh - <<EOF, and piping into a shell (| sh, | bash -s).
+// Running a script file (`bash scripts/dev.sh`) stays allowed.
+const SHELL = '(?:bash|sh|zsh|dash|ksh)';
+const NESTED_SHELL = [
+  new RegExp(`(?:^|[\\s;&|(/])${SHELL}\\s+(?:-[a-zA-Z]+\\s+)*-[a-zA-Z]*c(?=\\s|$)`),
+  new RegExp(`(?:^|[\\s;&|(/])${SHELL}(?:\\s+-[a-zA-Z]*)*\\s*<<`),
+  new RegExp(`\\|\\s*(?:\\S*/)?${SHELL}(?:\\s+-[a-zA-Z]*)*\\s*(?:$|[;&|)\\n])`),
+];
+const EVAL = /(?:^|[\s;&|(])eval(?=\s|$)/;
+const DD_OUT = /\bdd\b[^|;&\n]*?\sof=([^\s;&|<>()]+)/;
 
 /** Why `cmd` writes file content outside a temp dir, or null. */
 export function shellWriteReason(cmd) {
@@ -59,6 +71,10 @@ export function shellWriteReason(cmd) {
   if (/\bperl\s+-[a-zA-Z]*i/.test(s)) return 'perl -i (in-place edit)';
   if (INLINE_INTERPRETER.some((re) => re.test(s))) return 'an inline interpreter script (python -c / python - <<EOF / node -e …)';
   if (TMP_SCRIPT.test(s)) return 'a script run from a temp dir';
+  if (NESTED_SHELL.some((re) => re.test(s))) return 'a nested shell script (bash -c / sh <<EOF / | sh) — run the command directly';
+  if (EVAL.test(s)) return 'eval';
+  const dd = s.match(DD_OUT);
+  if (dd && outsideTmp(dd[1])) return `dd of="${dd[1]}"`;
   return null;
 }
 

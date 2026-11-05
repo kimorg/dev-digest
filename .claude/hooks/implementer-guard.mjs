@@ -7,7 +7,8 @@
 //               allowed for the plan's compile-only changes)
 //   Bash        blocked: git writes, gh pr/api, review-gate escape hatches, shell writes to the paths above,
 //               and any shell write of file content outside a temp dir (redirects, tee, sed -i, perl -i,
-//               inline interpreter scripts) — file content changes go through Edit/Write only, so the
+//               inline interpreter scripts, nested shells — bash -c, sh <<EOF, | sh — eval, dd of=) —
+//               file content changes go through Edit/Write only, so the
 //               Stop hook (implementer-verify.mjs) sees every edited package in the transcript;
 //               recursive deletes (rm -r / -R / -rf / --recursive) anywhere; cp / mv / ln / touch onto a test path
 // Exit 0 = allowed, 2 = blocked (stderr goes back to the agent). Unparseable input fails closed.

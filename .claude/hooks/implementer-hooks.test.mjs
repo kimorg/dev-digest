@@ -40,6 +40,16 @@ test('implementer-guard: read, test, tool and temp-dir commands pass', () => {
     'git log --format=%s | grep -c perf',
     'cat client/src/a.ts',
     'node scripts/check.mjs server',
+    'grep -rn "bash -c" docs',
+    'bash scripts/dev.sh --db-only',
+    'ls | grep -c shared',
+    'git log --oneline | head -5 | sha1sum',
+    'pnpm test 2>&1 | tail -5 | grep -E "sh|bash"',
+    'git -c core.pager=cat log -1',
+    'grep -rn evaluate src',
+    'cd server && pnpm exec vitest run evaluator.test.ts',
+    'dd if=server/a.bin of=/tmp/a.bin',
+    'dd if=a of=/dev/null',
   ]) assert.equal(hook('implementer-guard.mjs', { tool_name: 'Bash', tool_input: { command } }, '/repo').code, 0, command);
 });
 
@@ -67,6 +77,21 @@ test('implementer-guard: shell writes of file content into the repo are blocked'
     'rm --recursive client/.next',
     'cd client && rm -rf .next && pnpm test',
     'find client/src -name x -exec rm -r {} +',
+    // nested shells / eval hide the redirect inside a quoted argument; dd writes without a redirect
+    "bash -c 'echo x > server/src/a.ts'",
+    'sh -c "printf x >> client/src/b.tsx"',
+    "bash -lc 'echo x > a.ts'",
+    "/bin/sh -c 'echo x > a.ts'",
+    "cd client && sh -ec 'cat x > src/a.ts'",
+    "ls src | xargs -I{} sh -c 'echo > {}'",
+    "bash <<'EOF'\necho x > server/src/a.ts\nEOF",
+    'sh - <<EOF\necho > a.ts\nEOF',
+    "echo 'echo x > a.ts' | sh",
+    'cat cmds.txt | bash -s',
+    "echo 'echo x > a.ts' | /bin/bash && ls",
+    "eval 'echo x > server/src/a.ts'",
+    'echo x | dd of=server/src/a.ts',
+    'dd if=/dev/zero of=./big.bin bs=1 count=1',
   ]) {
     const r = hook('implementer-guard.mjs', { tool_name: 'Bash', tool_input: { command } }, '/repo');
     assert.equal(r.code, 2, command);
@@ -109,6 +134,13 @@ test('implementer-verify: a shell write in the transcript adds the packages from
     { name: 'Bash', input: { command: "cd client && cat > src/a.ts <<'EOF'\nx\nEOF" } },
   ], 't2');
   assert.deepEqual(checked(r), ['client', 'mcp', 'server']);
+});
+
+test('implementer-verify: a nested-shell write counts as a shell write', () => {
+  const root = repo();
+  writeFileSync(join(root, 'client/src/a.ts'), 'x');
+  const r = verify(root, [{ name: 'Bash', input: { command: "bash -c 'echo x > client/src/a.ts'" } }], 't5');
+  assert.deepEqual(checked(r), ['client']);
 });
 
 test('implementer-verify: a script written to /tmp counts as a shell write', () => {
