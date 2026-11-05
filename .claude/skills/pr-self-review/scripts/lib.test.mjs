@@ -168,6 +168,21 @@ test('alsoWhen routes by content: drizzle in a service, risky APIs in client cod
   assert.ok(!skillsFor('server/src/a.test.ts', routing, text("from 'drizzle-orm'")).includes('drizzle-orm-patterns'), 'exclude wins');
 });
 
+test('agent tooling in .claude/: hooks and skill scripts are reviewed, skill content is not', () => {
+  for (const p of ['.claude/hooks/implementer-guard.mjs', '.claude/hooks/lib/shell-write.mjs', '.claude/skills/run-plan/scripts/run-plan.mjs', '.claude/settings.json']) {
+    assert.ok(!matchesAny(p, routing.exclude), `${p} must not be excluded`);
+    assert.ok(skillsFor(p, routing).includes('security'), `${p} → security`);
+  }
+  assert.ok(skillsFor('.claude/hooks/agent-guard.mjs', routing).includes('typescript-expert'));
+  const hookTest = skillsFor('.claude/hooks/agent-guard.test.mjs', routing);
+  assert.ok(!hookTest.includes('security') && hookTest.includes('typescript-expert'), 'hook tests: advisory only');
+  for (const p of [
+    '.claude/agents/implementer.md', '.claude/skills/typescript-expert/references/utility-types.ts',
+    '.claude/skills/frontend-architecture/evals/fixtures/ReviewRunsPanel.tsx', '.claude/skills/fastify-best-practices/tile.json',
+    '.claude/skills/typescript-expert/scripts/ts_diagnostic.py', '.claude/settings.local.json', '.claude/worktrees/x/server/src/a.ts',
+  ]) assert.ok(matchesAny(p, routing.exclude), `${p} must stay excluded`);
+});
+
 test('typecheckTargets: TS or setup files only; server and reviewer-core go together', () => {
   const f = (...paths) => paths.map((path) => ({ path, hash: 'h' }));
   assert.deepEqual(typecheckTargets(f('client/src/a.tsx', 'client/messages/en/x.json')), ['client']);

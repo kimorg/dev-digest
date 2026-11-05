@@ -34,7 +34,7 @@ function makeRepo() {
   const repo = join(dir, 'repo');
   run('git', ['init', '-q', '--bare', '-b', 'main', remote], dir);
   run('git', ['init', '-q', '-b', 'main', repo], dir);
-  for (const [k, v] of [['user.name', 'T'], ['user.email', 't@example.com'], ['commit.gpgsign', 'false'], ['core.hooksPath', '.githooks']]) {
+  for (const [k, v] of [['user.name', 'T'], ['user.email', 't@example.com'], ['commit.gpgsign', 'false']]) {
     mustGit(repo, 'config', k, v);
   }
   cpSync(SKILL_DIR, join(repo, '.claude/skills/pr-self-review'), { recursive: true });
@@ -42,9 +42,12 @@ function makeRepo() {
   cpSync(join(SRC_ROOT, '.githooks'), join(repo, '.githooks'), { recursive: true });
   write(repo, 'README.md', '# t\n');
   mustGit(repo, 'add', '-A');
-  mustGit(repo, 'commit', '-qm', 'init'); // excluded files only → allowed without a review
+  // Seed commit before the hooks are on: the copied skill scripts (.claude/skills/*/scripts) are
+  // reviewable files, so with hooks enabled this commit would need a review of its own.
+  mustGit(repo, 'commit', '-qm', 'init');
   mustGit(repo, 'remote', 'add', 'origin', remote);
   mustGit(repo, 'push', '-q', '-u', 'origin', 'main');
+  mustGit(repo, 'config', 'core.hooksPath', '.githooks');
   mustGit(repo, 'checkout', '-qb', 'feat');
   return repo;
 }
