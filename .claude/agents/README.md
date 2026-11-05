@@ -9,40 +9,50 @@ in the agent files; when you change an agent, update its row here.
 ```
 goal ──► brainstorm (optional: several reasonable approaches) ──► user picks an option
   │
-  └──► planner ──► Development Plan ──► user approves ──► main thread saves docs/plans/NNN-<slug>.md
+  └──► spec-creator (design sources: text · screenshots · code · repo; spawns ≤3 researcher ∥, brainstorm)
+          │   NEEDS_INPUT (blocking questions → main thread asks → SendMessage) ─┐
+          │   DRAFT (language of the request, inline questions) → user edits / approves ◄─┘
+          ▼   WRITTEN: English spec → <package>/specs/NNN-*.md | specs/NNN-*.md (cross-package)
+          │
+          └──► implementation-planner ──► Requirements check + Recommendations + Development Plan
+                     │   (no spec → NEEDS_SPEC · blocking ambiguity → NEEDS_CLARIFICATION)
+                     ▼
+               user approves + picks execution mode ──► main thread saves docs/plans/NNN-<slug>.md
                                                                            │
-             implementer(plan path) ◄──────────────────────────────────────┘
+  /run-plan <plan> (skill, main thread) ◄──────────────────────────────────┘
+     preflight + baseline (scripts/run-plan.mjs)
+     implementer: Steps = production code (single run | workstreams, parallel only across packages)
+     typecheck + dependency-cruiser (deterministic)
+     test-writer (Tests T-n, oracle = spec AC) ∥ architecture-reviewer ∥ security-reviewer (by triggers)
+     merged fix loop ≤ 2: bugs (it.fails) + CRITICAL/WARNING → implementer (SendMessage)
+                          → test-writer flips it.fails → re-review by the reviewers that failed
+     Run Report (git dir) + hand-off
                      │
                      ▼
-             Implementation Report ──► test-writer ──► Test Report
-                                            │
-                                            ▼
-                                   plan-verifier(plan path) ──► traceability matrix
-                                            │
-                                            ▼
-                     architecture-reviewer ∥ security-reviewer ──► findings
-                                            │
-                                            ▼
-                                   doc-writer ──► docs as built
-                                            │
-                                            ▼
-                     main thread: pr-self-review → commit · /engineering-insights
+     plan-verifier(plan path) — run manually by the user ──► traceability matrix
+                     │
+                     ▼
+     doc-writer (optional) ──► main thread: pr-self-review → commit · /engineering-insights
 
 researcher — on demand at any point: one concrete question → research report
 ```
 
 The main thread orchestrates. Agents do not call each other (`Agent` is disallowed in all of
-them) and cannot ask the user questions; they return clarifying questions in their final message.
+them) — except `spec-creator`, which may spawn only `researcher` and `brainstorm` (enforced by
+its guard hook; an `Agent(type)` list in a subagent's `tools` is ignored by Claude Code). No
+agent can ask the user questions; they return clarifying questions in their final message, and
+the main thread asks them and resumes the agent with `SendMessage`.
 
 ## At a glance
 
 | Agent | Responsibility | Model | Tools | Writes files | Skills (preloaded) | Hooks | Max turns |
 |---|---|---|---|---|---|---|---|
 | [researcher](researcher.md) | Answer one concrete question from the repo or external sources | `sonnet` | Read, Grep, Glob, Bash (read-only by prompt), WebSearch, WebFetch | no | — | — | — |
-| [planner](planner.md) | Turn a goal into a structured Development Plan | `opus`, effort `high` | Read, Grep, Glob | no | project set (10) | — | 40 |
-| [implementer](implementer.md) | Execute an approved plan in server / client / reviewer-core / e2e flows | `sonnet` | Read, Grep, Glob, Edit, Write, Bash | yes, guarded | project set (10) | guard + verify | 150 |
+| [spec-creator](spec-creator.md) | Analyse the design and write an EARS spec after the user approves it | `opus`, effort `high` | Read, Grep, Glob, Write, Edit, Agent, Skill | spec files only | mermaid-diagram, ears-requirements (+ on demand: security, postgresql-table-design) | guard `spec-creator` | 80 |
+| [implementation-planner](implementation-planner.md) | Turn a spec into a reviewed Development Plan with an execution-mode choice | `opus`, effort `high` | Read, Grep, Glob | no | project set (10) + ears-requirements | — | 40 |
+| [implementer](implementer.md) | Execute the production-code Steps of an approved plan (or one workstream / a fix batch) | `sonnet` | Read, Grep, Glob, Edit, Write, Bash | yes, guarded; no new test files | project set minus RTL (9) | guard + verify | 150 |
 | [brainstorm](brainstorm.md) | Compare options for one decision before planning | `opus`, effort `high` | Read, Grep, Glob, WebSearch, WebFetch | no | onion, frontend-architecture | — | 30 |
-| [test-writer](test-writer.md) | Write and run UI / backend / e2e tests for existing code | `sonnet` | Read, Grep, Glob, Edit, Write, Bash | test files only | testing set (4) | guard `test-writer` + verify | 100 |
+| [test-writer](test-writer.md) | Write and run a plan's Tests table with the spec's ACs as the oracle | `sonnet` | Read, Grep, Glob, Edit, Write, Bash | test files only | testing set (4) | guard `test-writer` + verify | 100 |
 | [plan-verifier](plan-verifier.md) | Check the code against every item of a plan | `opus`, effort `high` | Read, Grep, Glob, Bash (allowlist) | no | — (on purpose) | guard `verifier` | 60 |
 | [architecture-reviewer](architecture-reviewer.md) | Check architectural boundaries of a change | `opus`, effort `high` | Read, Grep, Glob, Bash (allowlist) | no | architecture set (3) | guard `readonly` | 40 |
 | [security-reviewer](security-reviewer.md) | Find exploitable vulnerabilities and rate them | `opus`, effort `high` | Read, Grep, Glob, Bash (allowlist) | no | security | guard `readonly` | 40 |
@@ -62,30 +72,66 @@ by the tool list, not by a mode.
   Type B external) with Answer, Findings, References, "Not found / unverified" — or a
   `## Clarification needed` block.
 
-## planner
+## spec-creator
 
-- **Does:** reads package `AGENTS.md`, `INSIGHTS.md` (top 3 per package) and `specs/`; places the
+- **Does:** reads the design sources (text, screenshots via Read, code, a reference repo) and the
+  touched packages' `AGENTS.md` / `INSIGHTS.md` / `specs/` / `docs/`; spawns up to 3 `researcher`
+  in parallel and `brainstorm` for competing approaches; reviews the design for gaps, corner
+  cases, communication between modules, UX and untrusted data; writes EARS acceptance criteria
+  (`AC-n (pattern)`), edge cases, NFRs, provenance and untrusted-input tables; picks the folder
+  (one package → `<package>/specs/`, several → root `specs/`) and the next free `NNN` across all
+  spec folders.
+- **Does not:** write before the user approves the draft; answer its own blocking questions;
+  put implementation details (file paths, functions, layers, libraries) in a spec — diagrams,
+  contracts and the logical DB schema are allowed; write code, plans, docs, READMEs or `e2e/specs/`; commit.
+- **Skills:** preloads `mermaid-diagram`, `ears-requirements`; loads `security` (untrusted data,
+  LLM, access) and `postgresql-table-design` (logical DB schema) on demand — the hook allows no
+  other skill. Reads the product rubrics `docs/skills/{edge-case-checklist,breaking-change,
+  response-schema,deprecation-policy}` when relevant.
+- **Disallowed:** Bash, NotebookEdit, WebFetch, WebSearch (external facts come through `researcher`).
+- **In:** a feature request + design sources; on resume — answers, edits or approval. **Out:**
+  `Status: NEEDS_INPUT` (blocking questions with options and a recommendation) → `Status: DRAFT`
+  (full spec in the language of the request + Design review table + inline questions) →
+  `Status: WRITTEN` (English file `NNN-<slug>.md`, `Spec ID: SPEC-NNN`, `Status: approved`).
+  Template and rules: [`specs/README.md`](../../specs/README.md).
+
+## implementation-planner
+
+- **Does:** checks every requirement of the spec against the code (`OK | AMBIGUOUS | CONFLICT |
+  INCORRECT | UNTESTABLE | GAP` with `path:line`), lists verified corrections, questions and up
+  to 5 recommendations; reads package `AGENTS.md`, `INSIGHTS.md` (top 3 per package); places the
   change in onion rings / frontend layers; builds a per-file **skill contract** from the
   preloaded skills; plans cross-cutting work (both `vendor/shared` copies, `db:generate`,
-  reviewer-core → server typecheck, e2e flows); gives every step "Done when" + "Verify".
-- **Does not:** write code or files, use `pr-self-review/routing.json` as a planning source.
+  reviewer-core → server typecheck, e2e flows); gives every step "Covers" (AC/R), "Done when" +
+  "Verify"; prepares a **single-agent** pass and a **multi-agent** workstream breakdown and asks
+  the user which one to run.
+- **Does not:** write, complete or edit specs; put unaccepted recommendations into the steps;
+  write code or files; run commands or other agents; use `pr-self-review/routing.json` as a
+  planning source.
 - **Disallowed:** Edit, Write, NotebookEdit, Bash, Agent, Skill, WebFetch, WebSearch.
-- **In:** a goal (the delegation prompt). **Out:** a Development Plan in Markdown —
-  `Status: READY` (Goal & non-goals · Context consulted · Architecture · Skill contract · Steps ·
-  Cross-cutting · Tests · Verification · Handoff to reviewers · Risks) or
-  `Status: NEEDS_CLARIFICATION` with 3–5 questions. ~2k tokens. Persisted by the main thread to
-  [`docs/plans/`](../../docs/plans/README.md).
+- **In:** a spec — `<package>/specs/NNN-*.md` path or a full spec in the prompt — plus optional
+  accepted decisions and the chosen execution mode. **Out:** a Development Plan in Markdown —
+  `Status: READY` (Requirements check · Recommendations · Goal & non-goals · Context consulted ·
+  Architecture · Skill contract · Steps · Cross-cutting · Tests · Verification · Execution mode ·
+  Handoff to reviewers · Risks), `Status: NEEDS_SPEC` (no usable spec) or
+  `Status: NEEDS_CLARIFICATION` (blocking ambiguity) with 3–5 questions. ~2.5k tokens. The main
+  thread asks the mode question (`AskUserQuestion`), records the answer in the plan header and
+  persists it to [`docs/plans/`](../../docs/plans/README.md).
 
 ## implementer
 
-- **Does:** executes plan steps in order; follows the contracted skills; runs typecheck + unit
-  tests of touched packages (integration / e2e only if the plan asks and Docker / stack is up);
-  checks the diff stays within the plan; reports evidence.
-- **Does not:** plan, commit or push, architecture / security review, dependency-cruiser, fix
-  pre-existing issues, weaken tests, edit `INSIGHTS.md`. Stops with `BLOCKED` on contradictions,
-  out-of-plan modules / contracts / migrations, or two failed fixes of the same check.
+- **Does:** executes the plan's Steps (production code + test infrastructure in `src/`, e.g.
+  `adapters/mocks.ts`), all or one workstream; compile-only edits of the existing tests the plan
+  marks `compile`; fix batches from `/run-plan`; runs typecheck + the existing unit tests of
+  touched packages; checks the diff stays within the plan; reports evidence.
+- **Does not:** write new tests (test-writer; `implementer-guard.mjs` blocks `Write`/`cp`/`mv` on
+  test paths), change assertions, plan, commit or push, architecture / security review,
+  dependency-cruiser, fix pre-existing issues, edit `INSIGHTS.md`. Stops with `BLOCKED` on
+  contradictions, out-of-plan modules / contracts / migrations, a test dispute, or two failed
+  fixes of the same check.
 - **Disallowed:** Agent, Skill, NotebookEdit, WebFetch, WebSearch.
-- **In:** path to a plan with `Status: READY`. **Out:** source changes in the working tree +
+- **In:** path to a plan with `Status: READY` (+ optional workstream, addenda, design images, fix
+  batch). **Out:** source changes in the working tree +
   an Implementation Report — `Status: DONE | PARTIAL | BLOCKED` (INSIGHTS applied · Steps ·
   Deviations · Verification evidence table · Blockers · Handoff to reviewers · Insight
   candidates). ~1.5k tokens.
@@ -104,7 +150,8 @@ by the tool list, not by a mode.
 
 ## test-writer
 
-- **Does:** writes tests by the package conventions (server `*.test.ts` / `*.it.test.ts` with
+- **Does:** writes the plan's Tests rows (`T-n`) from the spec's AC / EC / NFR — the code only
+  locates the seam; writes tests by the package conventions (server `*.test.ts` / `*.it.test.ts` with
   `buildApp({ overrides })` + `mocks.ts`; client colocated RTL tests with `vi.mock`; reviewer-core
   `test/<basename>.test.ts`; e2e `NN-*.flow.json`); uses `docs/skills/{edge-case-checklist,
   over-mocking,flaky-test-patterns,uncovered-branches}` as a rubric; runs every test twice; names
@@ -112,7 +159,8 @@ by the tool list, not by a mode.
 - **Does not:** change production code, configs or dependencies; weaken or snapshot-update tests.
   A real bug becomes an `it.fails` reproduction with `// BUG(test-writer)` plus a report entry.
 - **Disallowed:** Agent, Skill, NotebookEdit, WebFetch, WebSearch.
-- **In:** a plan (its Tests table), a report, files / a module, or a bug. **Out:** test files +
+- **In:** a plan (its Tests table) + the spec + the Implementation Report, or files / a module, or
+  a bug; on resume, "implementer fixed T-n" → `it.fails` becomes `it`. **Out:** test files +
   `# Test Report: …` — `Status: DONE | PARTIAL | BLOCKED` (INSIGHTS applied · Tests written ·
   Verification · Bugs found · Not covered · Insight candidates). ~1.5k tokens.
 
@@ -125,7 +173,8 @@ by the tool list, not by a mode.
 - **Does not:** validate the plan, give advice, review style / architecture / security; mark an
   item `MET` without evidence. Preloads no skills on purpose — it checks the rules the plan copied.
 - **Disallowed:** Edit, Write, NotebookEdit, Agent, Skill, WebFetch, WebSearch.
-- **In:** plan path (+ optional Implementation Report, base ref). **Out:** `# Plan Verification: …`
+- **In:** plan path (+ optional Implementation Report, base ref) — run manually after `/run-plan`,
+  with the prompt its `handoff` prints. **Out:** `# Plan Verification: …`
   — `Verdict: VERIFIED | GAPS | BLOCKED` with the traceability matrix. ~2k tokens.
 
 ## architecture-reviewer
@@ -169,58 +218,66 @@ by the tool list, not by a mode.
 
 | Hook | Used by | Event | Blocks | Fails |
 |---|---|---|---|---|
-| [`implementer-guard.mjs`](../hooks/implementer-guard.mjs) | implementer | `PreToolUse` on Edit / Write / Bash | writes to `server/clones/`, lockfiles, `server/src/db/migrations/`, `.git/`, `.githooks/`, `.claude/`, `INSIGHTS.md`, `.env*`, root strays, outside the repo; git write commands, `gh pr/api`, `--no-verify`, `PR_SELF_REVIEW_SKIP`, shell writes to those paths | closed (bad input → block) |
-| [`implementer-verify.mjs`](../hooks/implementer-verify.mjs) | implementer | `Stop` → `SubagentStop` | stopping while `tsc --noEmit` (src + test via `tsconfig.test.json` where present) fails in a package the agent edited (+ server after reviewer-core) | open: max 2 blocks per run, then a user warning; missing deps → warning |
-| [`agent-guard.mjs <profile>`](../hooks/agent-guard.mjs) | test-writer, doc-writer, plan-verifier (`verifier`), architecture- / security-reviewer (`readonly`) | `PreToolUse` on Edit / Write / Bash | Edit / Write outside the profile's path allowlist (test files · docs/READMEs · nothing); Bash outside the allowlist (read-only git / `ls` / `rg` …; + `pnpm\|npm test/typecheck`, `vitest run`, `tsc --noEmit` for `test-writer` / `verifier`), shell writes, `$(…)`, process substitution, env-var prefixes, `find -exec/-delete`, `git --output`, snapshot updates | closed (unknown profile / bad input → block) |
+| [`implementer-guard.mjs`](../hooks/implementer-guard.mjs) | implementer | `PreToolUse` on Edit / Write / Bash | `Write`, `cp` / `mv` / `ln` / `touch` onto test paths (new tests are test-writer's; `Edit` of an existing test stays allowed); writes to `server/clones/`, lockfiles, `server/src/db/migrations/`, `.git/`, `.githooks/`, `.claude/`, `INSIGHTS.md`, `.env*`, root strays, outside the repo; git write commands, `gh pr/api`, `--no-verify`, `PR_SELF_REVIEW_SKIP`, shell writes to those paths; any shell write of file content outside `/tmp` — redirects, `tee`, `sed -i`, `perl -i`, inline interpreter scripts, scripts run from `/tmp` (shared detector [`lib/shell-write.mjs`](../hooks/lib/shell-write.mjs)); recursive deletes (`rm -r` / `-R` / `-rf` / `--recursive`) | closed (bad input → block) |
+| [`implementer-verify.mjs`](../hooks/implementer-verify.mjs) | implementer | `Stop` → `SubagentStop` | stopping while `tsc --noEmit` (src + test via `tsconfig.test.json` where present) fails in a package the agent edited (+ server after reviewer-core). Edited packages = transcript Edit/Write; if the transcript also has a write-ish Bash command (`rm`/`mv`/`cp`, a redirect…) or an Edit/Write outside the repo, the packages in `git status` are added | open: max 2 blocks per run, then a user warning; missing deps → warning |
+| [`agent-guard.mjs <profile>`](../hooks/agent-guard.mjs) | test-writer, doc-writer, spec-creator, plan-verifier (`verifier`), architecture- / security-reviewer (`readonly`) | `PreToolUse` on Edit / Write / Bash (+ Agent, Skill for spec-creator) | Edit / Write outside the profile's path allowlist (test files · docs/READMEs · `NNN-<slug>.md` in `specs/` and `server\|client\|reviewer-core\|mcp/specs/` · nothing); a new spec whose `NNN` is not the next free number across those folders; spawning any agent other than `researcher` / `brainstorm` and loading any skill other than `security` / `postgresql-table-design` (spec-creator); Bash outside the allowlist (read-only git / `ls` / `rg` / `sed -n '<N>,<M>p'` …; + `pnpm\|npm test/typecheck`, `vitest run`, `tsc --noEmit` for `test-writer` / `verifier`), shell writes, `$(…)`, process substitution, env-var prefixes, `find -exec/-delete`, `git --output`, snapshot updates | closed (unknown profile / bad input → block) |
 | [`test-writer-verify.mjs`](../hooks/test-writer-verify.mjs) | test-writer | `Stop` → `SubagentStop` | stopping while the unit / component test files it wrote fail (+ typecheck of each package with a changed test — client `tsc --noEmit`, server / reviewer-core `tsconfig.test.json`); `*.it.test.ts` and e2e flows are not run | open: max 2 blocks per run, then a user warning; missing deps → warning |
 
-Guard tests: `node --test .claude/hooks/agent-guard.test.mjs`.
+Hook tests: `node --test .claude/hooks/agent-guard.test.mjs .claude/hooks/implementer-hooks.test.mjs`.
 
 Hooks of project agents run only in a **trusted** folder (the trust dialog on first launch).
 Without trust the agent still runs, without its guards.
 
 ## Skills
 
-planner and implementer preload the **same** set, so the plan and the code follow the same
-rules. Full skill content is injected into the agent's context (~24k tokens per run).
+implementation-planner and implementer preload the **same** set, so the plan and the code follow the same
+rules. Two deliberate exceptions, both preloaded by implementation-planner only:
+`ears-requirements` — EARS is a rule for specs, not for code; the planner needs it to word
+`UNTESTABLE` fixes and the Tests table's "Pattern → shape"; and `react-testing-library` — the
+planner plans the tests, test-writer (which preloads it) writes them, the implementer writes no
+tests. Don't "fix" these differences. Full skill content is injected into the agent's context (~24k tokens per run).
 
 | Group | Skills |
 |---|---|
-| UI | `frontend-architecture`, `react-best-practices`, `next-best-practices`, `react-testing-library` |
+| UI | `frontend-architecture`, `react-best-practices`, `next-best-practices` (+ `react-testing-library`: planner only) |
 | Backend | `onion-architecture`, `fastify-best-practices`, `drizzle-orm-patterns`, `postgresql-table-design` |
 | Shared | `zod`, `mermaid-diagram` |
+| Planner only | `ears-requirements`, `react-testing-library` (see above) |
 | Excluded | `security`, `pr-self-review` (later review stages), `engineering-insights` (main thread), `typescript-expert` |
 
 A new project skill is not picked up automatically — add it to both agents' `skills:` and to
-this table.
+this table (unless it is a spec-only skill like `ears-requirements`).
 
 The other agents preload only the skills of their job:
 
 | Agent | Skills | Why not more |
 |---|---|---|
-| brainstorm | `onion-architecture`, `frontend-architecture` | options are placed in rings / layers; implementation detail is the planner's |
-| test-writer | `react-testing-library`, `fastify-best-practices`, `drizzle-orm-patterns`, `zod` | the product test rubric (`docs/skills/*`) is not a Claude skill — it is read with Read |
-| plan-verifier | — | it checks the rules the plan copied into its Skill contract; a preloaded skill set invites general advice |
+| brainstorm | `onion-architecture`, `frontend-architecture` | options are placed in rings / layers; implementation detail is the implementation-planner's |
+| test-writer | `react-testing-library`, `fastify-best-practices`, `drizzle-orm-patterns`, `zod` | the product test rubric (`docs/skills/*`) is not a Claude skill — it is read with Read; for EARS specs it Reads only the "Pattern → test" section of `ears-requirements` (the rest is about wording criteria) |
+| plan-verifier | — (not even `ears-requirements`) | it checks the rules the plan copied into its Skill contract; a preloaded skill set invites general advice; it checks *whether* an AC is met, not how it is worded |
 | architecture-reviewer | `onion-architecture`, `frontend-architecture`, `next-best-practices` | RSC boundaries are architecture; React / data-access detail is not |
 | security-reviewer | `security` | the skill's generic stack examples (Express, Mongo, JWT) are overridden by the prompt's threat model |
 | doc-writer | `mermaid-diagram` | — |
+| spec-creator | `mermaid-diagram`, `ears-requirements`; on demand `security`, `postgresql-table-design` | a spec describes behaviour; architecture, framework and ORM skills would pull it towards implementation (module-boundary questions go to `brainstorm`, which preloads them) |
 
 ## Artifacts
 
 | Artifact | Produced by | Consumed by | Where |
 |---|---|---|---|
-| Research report | researcher | main thread / user | final message |
-| Development Plan | planner | user (approval), implementer | final message (language of the request) → `docs/plans/NNN-<slug>.md` (always English, translated by the main thread) |
+| Research report | researcher | main thread / user, spec-creator | final message |
+| Spec (questions → draft → file) | spec-creator | user (answers, approval), implementation-planner, plan-verifier | final message (draft in the language of the request) → `specs/` or `<package>/specs/NNN-<slug>.md` (always English, written by the agent after approval) |
+| Development Plan | implementation-planner | user (approval + execution mode), implementer | final message (language of the request) → `docs/plans/NNN-<slug>.md` (always English, translated by the main thread) |
 | Implementation Report | implementer | main thread, reviewers | final message |
 | Code changes | implementer | reviewers, `pr-self-review` | working tree (uncommitted) |
 | Insight candidates | implementer, test-writer | main thread → `/engineering-insights` | report section |
-| Options comparison | brainstorm | user (choice), planner | final message (optionally an ADR via doc-writer) |
+| Options comparison | brainstorm | user (choice → spec), implementation-planner | final message (optionally an ADR via doc-writer) |
 | Tests + Test Report | test-writer | plan-verifier, reviewers, `pr-self-review` | test files (uncommitted) + final message |
+| Run Report + stage log | `/run-plan` (main thread + `scripts/run-plan.mjs`) | user, plan-verifier (manual hand-off) | `<git-dir>/run-plan/NNN/{state.json,report.md}` — never in the diff |
 | Plan Verification | plan-verifier | main thread / implementer (gaps) | final message |
 | Architecture / Security Review | architecture-reviewer, security-reviewer | main thread / implementer (fixes) | final message |
 | Docs + Docs Report | doc-writer | readers, `pr-self-review` | `<package>/docs/`, READMEs (uncommitted) + final message |
 
-## Sources behind planner and implementer
+## Sources behind implementation-planner and implementer
 
 Official Anthropic sources (fetched 2026-10-27). **SA** = [Subagents](https://code.claude.com/docs/en/sub-agents) ·
 **BP** = [Best practices](https://code.claude.com/docs/en/best-practices) ·
@@ -233,14 +290,14 @@ Official Anthropic sources (fetched 2026-10-27). **SA** = [Subagents](https://co
 | Rule | Source | Applied in |
 |---|---|---|
 | Omitted `tools` inherits every tool — set it explicitly | SA · Supported frontmatter fields | both: explicit `tools` |
-| Limit tool access; the limit is enforced by Claude Code, not the prompt | SA · Best practices; BP | planner: Read/Grep/Glob only; implementer: no web |
+| Limit tool access; the limit is enforced by Claude Code, not the prompt | SA · Best practices; BP | implementation-planner: Read/Grep/Glob only; implementer: no web |
 | Parent permission mode overrides the subagent's `permissionMode` | SA · Permission modes | no `permissionMode`; read-only via tools |
-| Plan mode still allows shell commands | PM | planner has no Bash |
+| Plan mode still allows shell commands | PM | implementation-planner has no Bash |
 | Subagents can spawn subagents; remove `Agent` to prevent it | SA · Spawning subagents | both: `Agent` disallowed; reviews are separate agents |
 | `skills:` injects full skill content; `Skill` tool controls on-demand loading | SA · frontmatter `skills` | both: same preloaded set, `Skill` disallowed |
 | Description singles out one agent; "use proactively"; details in the prompt | SA · Description and proactive delegation | both `description` fields |
 | Fresh context — restate the rules the agent must follow | SA | repo invariants restated in both prompts |
-| One focused task per subagent | SA · Best practices | planner doesn't implement; implementer doesn't review |
+| One focused task per subagent | SA · Best practices | implementation-planner doesn't implement or write specs; implementer doesn't review |
 | Objective, output format, tool guidance, clear boundaries | MARS · Prompt engineering | prompt sections: Inputs · Hard rules · Procedure · Output |
 | Store work in artifacts, pass lightweight references | MARS | plan file in `docs/plans/`, implementer gets the path |
 | Return a condensed summary, structured by headers; minimal tool set | CE · Sub-agent architectures, Minimal viable tool sets | fixed Plan / Report formats with size limits |
@@ -249,10 +306,10 @@ Official Anthropic sources (fetched 2026-10-27). **SA** = [Subagents](https://co
 | Hard rules in hooks, guidelines in the prompt; keep the enforced set small | BP · Enforce steps with hooks | guard covers only "Do not touch" + review-gate escapes |
 | `SubagentStop` input has `agent_id`, `agent_transcript_path`; exit 2 keeps it running | HK · SubagentStop | verify hook reads the agent's own edits, per-agent block counter |
 | Specific prompt: files and what "done" looks like | BP · Write a specific prompt | plan steps: Files · Done when · Verify |
-| Stopping conditions; pause on blockers | BEA · Agents | `maxTurns`; `BLOCKED` / `PARTIAL`; planner Step 0 |
+| Stopping conditions; pause on blockers | BEA · Agents | `maxTurns`; `BLOCKED` / `PARTIAL`; implementation-planner Step 0 |
 | After two failed corrections, stop instead of a third try | BP · Steer the session | implementer: two failed fixes → `BLOCKED` |
 | Fresh reviewer; a reviewer always finds something — skip style | BP · Review against your spec | implementer self-check limited to plan + checks |
-| Simplest solution, add complexity only when needed | BEA | planner "keep it minimal"; implementer "minimal change" |
+| Simplest solution, add complexity only when needed | BEA | implementation-planner "keep it minimal"; implementer "minimal change" |
 
 **Project rules** (this repo, not the sources above): package `AGENTS.md` beats a skill;
 top-3 `INSIGHTS.md` entries per package (session protocol in [`../../AGENTS.md`](../../AGENTS.md));

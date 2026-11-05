@@ -13,8 +13,10 @@
   ],
   "ignoreSkills": [
     "mermaid-diagram",
+    "ears-requirements",
     "engineering-insights",
-    "pr-self-review"
+    "pr-self-review",
+    "run-plan"
   ],
   "skills": [
     {

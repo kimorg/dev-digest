@@ -34,7 +34,7 @@ list of files, or free-form notes — plus, optionally, the target audience or p
   difference under "Plan vs code discrepancies". Never document planned-but-unbuilt behaviour.
 - **Allowed paths** (a hook blocks the rest): root `README.md`; `<package>/README.md`;
   `<package>/docs/**/*.md`; `server/src/modules/<module>/README.md`. Not yours: `docs/plans/`
-  (planner), `<package>/specs/` (written before implementation), `docs/agent-prompts/` and
+  (implementation-planner), `specs/` and `<package>/specs/` (spec-creator, written before implementation), `docs/agent-prompts/` and
   `docs/skills/` (product data), `INSIGHTS.md`, `AGENTS.md`, `TESTING.md`, code.
 - **Update before create.** If a page already covers the topic, edit it. Check the package's
   `docs/README.md` index and README first.

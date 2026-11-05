@@ -4,10 +4,13 @@
 //   doc-writer   Edit/Write: package docs/ and READMEs (.md only). Bash: none
 //   verifier     Edit/Write: none. Bash: read-only + test/typecheck runners          (plan-verifier)
 //   readonly     Edit/Write: none. Bash: read-only commands                          (architecture-/security-reviewer)
+//   spec-creator Edit/Write: spec files NNN-<slug>.md in specs/ and <package>/specs/; a new file must
+//                take the next free NNN across all spec folders. Agent: researcher / brainstorm only.
+//                Skill (on demand): security / postgresql-table-design only. Bash: none
 // Bash is an allowlist: every segment of a compound command must start with an allowed command;
 // shell writes, command/process substitution and env-var prefixes are blocked.
 // Exit 0 = allowed, 2 = blocked (stderr goes back to the agent). Unknown profile or bad input fails closed.
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 
 const profile = process.argv[2];
@@ -36,15 +39,28 @@ const WRITE_PATHS = {
   ],
   verifier: [],
   readonly: [],
+  'spec-creator': [
+    /^specs\/\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/,
+    /^(?:server|client|reviewer-core|mcp)\/specs\/\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/,
+  ],
 };
+// Spec numbers are one sequence across these folders (spec-creator profile).
+const SPEC_DIRS = ['specs', 'server/specs', 'client/specs', 'reviewer-core/specs', 'mcp/specs'];
+// Subagents a profile may spawn; profiles not listed may not spawn any.
+const AGENTS = { 'spec-creator': ['researcher', 'brainstorm'] };
+// Skills a profile may load on demand (Skill tool); preloaded `skills:` are not affected.
+const SKILLS = { 'spec-creator': ['security', 'postgresql-table-design'] };
 
 const READ_ONLY = [
   /^git(?:\s+-C\s+\S+|\s+--no-pager)*\s+(?:diff|log|show|status|blame|ls-files|rev-parse|merge-base|grep|shortlog)\b/,
   /^(?:ls|cat|head|tail|wc|grep|rg|find|sort|uniq|cut|stat|file|pwd|tree|jq|diff|comm|basename|dirname|realpath|echo|printf|true|cd)\b/,
+  // Line ranges only — `sed -n '12,40p' file`. Any other sed script or flag (-i, w, e) can write or run.
+  /^sed\s+-n\s+(['"]?)\d+(?:,(?:\d+|\$))?p\1(?:\s+[^\s-][^\s;&|<>]*)*$/,
 ];
 const RUNNERS = [
   /^pnpm\s+(?:run\s+)?(?:test|typecheck)\b/,
   /^pnpm\s+exec\s+(?:vitest\s+run|tsc\s+--noEmit)\b/,
+  /^pnpm\s+vitest\s+run\b/,
   /^npm\s+(?:test|run\s+(?:test|typecheck))\b/,
   /^npx\s+(?:vitest\s+run|tsc\s+--noEmit)\b/,
 ];
@@ -53,6 +69,7 @@ const BASH = {
   'doc-writer': [],
   verifier: [...READ_ONLY, ...RUNNERS],
   readonly: READ_ONLY,
+  'spec-creator': [],
 };
 // Flags that turn an allowed command into a writer or a code runner.
 const FORBIDDEN_ARGS = [
@@ -112,6 +129,23 @@ function checkBash(cmd) {
   }
 }
 
+// A new spec file must take max(existing NNN) + 1 over every spec folder, so numbers stay unique repo-wide.
+function checkNewSpecNumber(rel) {
+  const num = Number(rel.split('/').pop().slice(0, 3));
+  let max = 0;
+  for (const dir of SPEC_DIRS) {
+    let names = [];
+    try {
+      names = readdirSync(resolve(root, dir));
+    } catch {
+      continue; // folder does not exist yet
+    }
+    for (const n of names) if (/^\d{3}-.+\.md$/.test(n)) max = Math.max(max, Number(n.slice(0, 3)));
+  }
+  const next = String(max + 1).padStart(3, '0');
+  if (num !== max + 1) block(`new spec "${rel}" must use the next free number ${next} (highest in ${SPEC_DIRS.join(', ')} is ${String(max).padStart(3, '0')})`);
+}
+
 if (!Object.hasOwn(WRITE_PATHS, profile ?? '')) block(`unknown profile "${profile}"`);
 
 let input;
@@ -132,6 +166,13 @@ if (tool === 'Edit' || tool === 'Write' || tool === 'NotebookEdit') {
   if (!WRITE_PATHS[profile].some((re) => re.test(rel))) {
     block(WRITE_PATHS[profile].length ? `"${rel}" is outside the paths this agent may write` : 'this agent is read-only');
   }
+  if (profile === 'spec-creator' && !existsSync(resolve(root, rel))) checkNewSpecNumber(rel);
+} else if (tool === 'Agent' || tool === 'Task') {
+  const type = args.subagent_type ?? 'general-purpose';
+  if (!(AGENTS[profile] ?? []).includes(type)) block(`this agent may not spawn "${type}" (allowed: ${(AGENTS[profile] ?? []).join(', ') || 'none'})`);
+} else if (tool === 'Skill') {
+  const name = String(args.skill ?? '').replace(/^\//, '');
+  if (!(SKILLS[profile] ?? []).includes(name)) block(`this agent may not load skill "${name}" (allowed: ${(SKILLS[profile] ?? []).join(', ') || 'none'})`);
 } else if (tool === 'Bash') {
   checkBash(String(args.command ?? ''));
 }

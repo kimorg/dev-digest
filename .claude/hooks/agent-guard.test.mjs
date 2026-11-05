@@ -2,16 +2,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const guard = join(dirname(fileURLToPath(import.meta.url)), 'agent-guard.mjs');
 const root = '/repo';
 
-function run(profile, tool, toolInput) {
+function run(profile, tool, toolInput, cwd = root) {
   const r = spawnSync('node', [guard, profile], {
-    input: JSON.stringify({ tool_name: tool, tool_input: toolInput, cwd: root }),
-    env: { ...process.env, CLAUDE_PROJECT_DIR: root },
+    input: JSON.stringify({ tool_name: tool, tool_input: toolInput, cwd }),
+    env: { ...process.env, CLAUDE_PROJECT_DIR: cwd },
     encoding: 'utf8',
   });
   return { code: r.status, stderr: r.stderr };
@@ -60,12 +62,14 @@ test('readonly allows read-only commands only', () => {
     'git diff HEAD -- server/src', 'git --no-pager log --oneline -5', 'git -C server status --porcelain',
     'git status --porcelain && git diff --stat', 'rg -n "foo|bar" server/src 2>/dev/null', 'ls -la | head -20',
     'cd server && git diff HEAD', 'grep -rn "x" client/src 2>&1 | wc -l',
+    'sed -n 1,110p server/src/a.ts', "sed -n '185,250p' docs/plans/006-x.md", 'sed -n 12p a.ts b.ts', 'sed -n "40,$p" a.ts',
   ]) assert.equal(bash('readonly', c), 0, c);
   for (const c of [
     'pnpm test', 'git commit -m x', 'git checkout .', 'git diff --output=/tmp/x', 'git -c core.pager=sh log',
     'echo x > file', 'cat a >> b', 'ls | tee out', 'find . -name x -delete', 'find . -exec rm {} ;',
     'cat $(echo /etc/passwd)', 'ls `pwd`', 'diff <(ls a) <(ls b)', 'FOO=1 ls', 'rm -rf server',
     'node -e "1"', 'sed -i s/a/b/ f', 'rg --pre cat x', 'echo "unterminated',
+    'sed -n 1p -i f', "sed -n '1w out' f", "sed -n '1p;w out' f", 'sed -n 1,5e f', "sed 's/a/b/' f", 'sed -n -e 1p f',
   ]) assert.equal(bash('readonly', c), 2, c);
 });
 
@@ -74,10 +78,49 @@ test('verifier and test-writer may run tests and typecheck', () => {
     for (const c of [
       'pnpm typecheck', 'cd server && pnpm exec vitest run --exclude \'**/*.it.test.ts\'', 'pnpm test',
       'npm test', 'npm run typecheck', 'npx vitest run test/run.test.ts', 'pnpm exec tsc --noEmit -p tsconfig.json',
+      'cd client && pnpm vitest run src/app/agents/_components/AgentCard/AgentCard.test.tsx 2>&1 | tail -8',
     ]) assert.equal(bash(profile, c), 0, `${profile}: ${c}`);
     for (const c of [
       'pnpm add msw', 'pnpm exec vitest run -u', 'pnpm exec vitest run --update', 'npm install',
-      'pnpm db:migrate', 'pnpm exec vitest', 'npx tsx run.ts', 'pnpm test > out.txt',
+      'pnpm db:migrate', 'pnpm exec vitest', 'npx tsx run.ts', 'pnpm test > out.txt', 'pnpm vitest', 'pnpm vitest run -u',
     ]) assert.equal(bash(profile, c), 2, `${profile}: ${c}`);
   }
+});
+
+test('no other profile may spawn subagents', () => {
+  for (const profile of ['test-writer', 'doc-writer', 'verifier', 'readonly']) {
+    assert.equal(run(profile, 'Agent', { subagent_type: 'researcher', prompt: 'x' }).code, 2, profile);
+  }
+});
+
+test('spec-creator writes only spec files, with the next free number, and spawns only researcher / brainstorm', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'spec-guard-'));
+  for (const d of ['specs', 'server/specs', 'client/specs', 'reviewer-core/specs']) mkdirSync(join(repo, d), { recursive: true });
+  writeFileSync(join(repo, 'server/specs/004-conventions.md'), '');
+  writeFileSync(join(repo, 'client/specs/004-conventions.md'), '');
+  writeFileSync(join(repo, 'server/specs/README.md'), '');
+  const w = (p, tool = 'Write') => run('spec-creator', tool, { file_path: join(repo, p) }, repo).code;
+
+  for (const p of ['specs/005-pr-digest.md', 'server/specs/005-x.md', 'client/specs/005-a-b.md',
+    'reviewer-core/specs/005-x.md', 'mcp/specs/005-x.md']) assert.equal(w(p), 0, p);
+  assert.equal(w('server/specs/004-conventions.md', 'Edit'), 0, 'edit of an existing spec');
+  for (const p of ['specs/004-dup.md', 'specs/006-gap.md', 'specs/001-old.md']) assert.equal(w(p), 2, `number: ${p}`);
+  for (const p of ['specs/README.md', 'server/specs/README.md', 'e2e/specs/05-x.flow.json', 'e2e/specs/005-x.md',
+    'specs/005-Pr_Digest.md', 'specs/5-x.md', 'specs/sub/005-x.md', 'docs/plans/005-x.md', 'server/src/a.ts',
+    'server/clones/r/server/specs/005-x.md', 'AGENTS.md', 'server/INSIGHTS.md', '../005-x.md',
+  ]) assert.equal(w(p), 2, p);
+
+  for (const t of ['researcher', 'brainstorm']) assert.equal(run('spec-creator', 'Agent', { subagent_type: t, prompt: 'q' }, repo).code, 0, t);
+  for (const t of ['implementer', 'general-purpose', 'spec-creator', undefined]) {
+    assert.equal(run('spec-creator', 'Agent', { subagent_type: t, prompt: 'q' }, repo).code, 2, String(t));
+  }
+  assert.equal(run('spec-creator', 'Bash', { command: 'ls' }, repo).code, 2);
+});
+
+test('spec-creator loads on demand only security / postgresql-table-design; other profiles load none', () => {
+  for (const k of ['security', 'postgresql-table-design', '/security']) assert.equal(run('spec-creator', 'Skill', { skill: k }).code, 0, k);
+  for (const k of ['onion-architecture', 'pr-self-review', 'engineering-insights', 'ears-requirements', '', undefined]) {
+    assert.equal(run('spec-creator', 'Skill', { skill: k }).code, 2, String(k));
+  }
+  for (const profile of ['test-writer', 'doc-writer', 'verifier', 'readonly']) assert.equal(run(profile, 'Skill', { skill: 'security' }).code, 2, profile);
 });

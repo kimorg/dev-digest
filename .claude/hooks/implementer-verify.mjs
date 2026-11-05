@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // SubagentStop check for the `implementer` subagent (frontmatter `Stop`, auto-converted to SubagentStop).
-// Typechecks (src + test where `tsconfig.test.json` exists) every package the agent edited (from
-// its transcript; git status as fallback), plus server after a reviewer-core edit. Errors → exit 2,
+// Typechecks (src + test where `tsconfig.test.json` exists) every package the agent edited, plus server
+// after a reviewer-core edit. Edited files come from the transcript's Edit/Write calls; when the
+// transcript also shows a write-ish Bash command or an Edit/Write outside the repo (e.g. a script in
+// /tmp), that list may be incomplete, so the packages in `git status` are added too. No transcript →
+// git status only. Errors → exit 2,
 // the agent keeps working with the errors as its next instruction. Loop guards:
 //   - at most MAX_BLOCKS blocks per agent run, then the agent may stop and the user gets a warning;
 //   - missing deps or an unreadable input never block (warning only).
@@ -9,6 +12,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { execFileSync, spawnSync } from 'node:child_process';
 import { homedir, tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
+import { mayWriteFiles } from './lib/shell-write.mjs';
 
 const MAX_BLOCKS = 2;
 const MAX_ERROR_LINES = 30;
@@ -29,24 +33,33 @@ try {
 
 const root = resolve(process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd());
 const packageOf = (p) => {
-  const rel = relative(root, resolve(p)).split(sep).join('/');
+  const rel = relative(root, resolve(root, p)).split(sep).join('/');
   return PACKAGES.find((pkg) => rel.startsWith(`${pkg}/`)) ?? null;
 };
+const isOutsideRepo = (p) => relative(root, resolve(root, p)).startsWith('..');
 
+// { files, incomplete } from the agent's transcript, or null when there is no transcript.
 function editedFromTranscript(path) {
   if (!path) return null;
   const file = path.startsWith('~') ? join(homedir(), path.slice(1)) : path;
   if (!existsSync(file)) return null;
   const files = [];
+  let incomplete = false;
   for (const line of readFileSync(file, 'utf8').split('\n')) {
     if (!line.includes('"tool_use"')) continue;
     try {
       for (const c of JSON.parse(line).message?.content ?? []) {
-        if (c.type === 'tool_use' && (c.name === 'Edit' || c.name === 'Write') && c.input?.file_path) files.push(c.input.file_path);
+        if (c.type !== 'tool_use') continue;
+        if ((c.name === 'Edit' || c.name === 'Write') && c.input?.file_path) {
+          files.push(c.input.file_path);
+          if (!packageOf(c.input.file_path)) incomplete ||= isOutsideRepo(c.input.file_path);
+        } else if (/^bash$/i.test(c.name) && mayWriteFiles(c.input?.command ?? '')) {
+          incomplete = true;
+        }
       }
     } catch { /* partial line while the transcript is being written */ }
   }
-  return files;
+  return { files, incomplete };
 }
 
 function changedFromGit() {
@@ -58,7 +71,10 @@ function changedFromGit() {
   }
 }
 
-const files = editedFromTranscript(input.agent_transcript_path) ?? changedFromGit();
+const fromTranscript = editedFromTranscript(input.agent_transcript_path);
+const files = !fromTranscript
+  ? changedFromGit()
+  : fromTranscript.incomplete ? [...fromTranscript.files, ...changedFromGit()] : fromTranscript.files;
 const touched = new Set(files.map(packageOf).filter(Boolean));
 if (touched.has('reviewer-core')) touched.add('server'); // server compiles reviewer-core source
 if (touched.size === 0) allow();

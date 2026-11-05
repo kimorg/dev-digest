@@ -91,6 +91,17 @@ demo or manual acceptance; the seed is only good for checking the degraded state
 `server/src/db/seed.ts:93` · **Apply when:** verifying any repo-intel-backed feature (blast radius, context) by hand
 or in e2e.
 
+### 2026-11-05 — `constants.ts` importing a type from `helpers.ts` is a new `domain-is-pure` violation, even with `import type`
+**Context:** two `/run-plan` runs of one plan (enabled skill count on agent cards, throwaway worktrees) typed
+`NO_SKILL_COUNTS` in `modules/agents/constants.ts` with a shape declared in `modules/agents/helpers.ts`. ·
+**Insight:** dependency-cruiser puts `constants.ts` in the domain ring and `helpers.ts` outside it; a type-only import
+still creates the edge, so both runs got the same CRITICAL from the deterministic checks (`run-plan.mjs checks` →
+pr-self-review's `runDepcruise`). Typing the constant inline passes but duplicates the shape; the clean fix is the
+shape in the module's `types.ts`, imported by constants, helpers and repository. · **Evidence:**
+`.claude/skills/onion-architecture/SKILL.md:56` (ring 1 = `domain.ts`, `constants.ts`, `types.ts`),
+`.claude/skills/pr-self-review/scripts/checks.mjs:57` · **Apply when:** a plan puts a shape in `helpers.ts` that a
+constant in `constants.ts` needs.
+
 ## Codebase Patterns
 
 _Conventions and architectural decisions (with the reason) that the code doesn't explain._
@@ -372,6 +383,7 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-28 — plan 002 Revision 3 (drop risk areas): regenerating an uncommitted migration that is already applied locally needs a manual local rollback, run from the main thread
 - 2026-10-28 — plan 003 Smart Diff: PR file lists stop at 100: `getPullRequest` calls `pulls.listFiles` once with `per_page: 100`, types shared by `domain.ts` and `ports.ts` go in the module's `types.ts`
 - 2026-11-03 — plan 005 Blast Radius: the seeded PR #482 can never show a real blast radius: the seed repo has no clone, blast radius is a 1-hop read: `BFS_DEPTH` drives only `getCriticalPaths`, `POST /repos/:id/resync` answers 202 even when no job was enqueued, `GET /repos/:id/index-state` without a row returns a placeholder: `lastIndexedSha: ''`, epoch `updatedAt`
+- 2026-11-05 — /run-plan e2e runs (enabled skill count, throwaway worktrees): `constants.ts` importing a type from `helpers.ts` is a new `domain-is-pure` violation, even with `import type`
 
 ## Open Questions
 

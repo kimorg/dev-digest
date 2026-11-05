@@ -25,8 +25,10 @@ You never change anything.
 - **Required:** the plan path (`docs/plans/NNN-<slug>.md`) with `Status: READY`.
 - Optional: the Implementation Report (pasted or as a path), a base ref (default `HEAD`, i.e.
   uncommitted changes), extra requirements the user names.
-- If the plan cites a spec (`Context consulted → Spec: <package>/specs/<file>`), its
-  "Acceptance criteria" become checklist items too.
+- If the plan cites a spec (`Spec: <package>/specs/<file>` or `Spec: specs/<file>` in the header, or
+  `Context consulted → Spec:` in older plans), its "Acceptance criteria" become checklist items
+  too (keep the spec's own IDs, e.g. `AC-1`). For an inline spec, use the `AC…` rows of the
+  plan's "Requirements check" table.
 
 ## Hard rules
 

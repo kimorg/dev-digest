@@ -18,6 +18,8 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [typescript-expert](typescript-expert/SKILL.md) | Full-stack | Type-level programming, performance, tooling, migrations |
 | [security](security/SKILL.md) | Full-stack | OWASP Top 10:2025, auth, injection, uploads, secrets |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
+| [ears-requirements](ears-requirements/SKILL.md) | Specs | EARS acceptance criteria: patterns, rules, IDs, bad → good, pattern → test; preloaded by spec-creator and implementation-planner (v1.0.0) |
+| [run-plan](run-plan/SKILL.md) | Shared | `/run-plan` only (`disable-model-invocation`): runs an approved plan — preflight + baseline, implementer, checks, test-writer ∥ architecture / security reviewers, merged fix loop, Run Report + manual plan-verifier hand-off; deterministic part in `scripts/run-plan.mjs` (v1.0.0) |
 | [pr-self-review](pr-self-review/SKILL.md) | Shared | Routes uncommitted changes to the UI / backend skills above, records PASS/BLOCKED; `.githooks` block commit/push on any CRITICAL (v1.0.0) |
 | [engineering-insights](engineering-insights/SKILL.md) | Shared | End-of-task capture of non-obvious learnings into each package's append-only `INSIGHTS.md` |
 

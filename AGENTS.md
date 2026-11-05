@@ -64,5 +64,10 @@ Package maps: [server](server/AGENTS.md) · [client](client/AGENTS.md) ·
 
 - Per package: `README.md` (overview) · `docs/` (deep reference) · `specs/` (feature specs)
   · `INSIGHTS.md` (learned gotchas). Read them when the task touches that package.
+- Root `specs/` — specs of features that change **two or more** packages
+  ([rules + template](specs/README.md)). Specs are written by the `spec-creator` subagent. It
+  returns `NEEDS_INPUT` (blocking questions: ask them with `AskUserQuestion`), then `DRAFT`
+  (show it, relay the edits or the approval), then `WRITTEN`. Resume it with `SendMessage`, and
+  never answer its questions yourself.
 - Root `docs/agent-prompts/` — reviewer system-prompt library (General, Security, Performance).
-- Root `docs/plans/` — approved Development Plans (`NNN-<slug>.md`) from `planner`, executed by `implementer`.
+- Root `docs/plans/` — approved Development Plans (`NNN-<slug>.md`) from `implementation-planner` (built from an approved spec in `specs/` or `<package>/specs/`), executed by the `/run-plan` skill: `implementer` (code) → `test-writer` (tests from the spec) ∥ reviewers → fix loop. `plan-verifier` is run manually afterwards.
