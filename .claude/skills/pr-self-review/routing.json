@@ -14,7 +14,6 @@
     ".claude/*.local.json",
     ".claude/*.lock",
     ".cursor/**",
-    ".githooks/**",
     "client/src/vendor/ui/**"
   ],
   "ignoreSkills": [
@@ -153,7 +152,8 @@
         ".github/workflows/**",
         ".claude/hooks/**",
         ".claude/skills/*/scripts/**",
-        ".claude/settings.json"
+        ".claude/settings.json",
+        ".githooks/**"
       ],
       "exclude": [
         "**/*.test.ts",

@@ -168,8 +168,11 @@ test('alsoWhen routes by content: drizzle in a service, risky APIs in client cod
   assert.ok(!skillsFor('server/src/a.test.ts', routing, text("from 'drizzle-orm'")).includes('drizzle-orm-patterns'), 'exclude wins');
 });
 
-test('agent tooling in .claude/: hooks and skill scripts are reviewed, skill content is not', () => {
-  for (const p of ['.claude/hooks/implementer-guard.mjs', '.claude/hooks/lib/shell-write.mjs', '.claude/skills/run-plan/scripts/run-plan.mjs', '.claude/settings.json']) {
+test('agent tooling in .claude/ and .githooks/: hooks and skill scripts are reviewed, skill content is not', () => {
+  for (const p of [
+    '.claude/hooks/implementer-guard.mjs', '.claude/hooks/lib/shell-write.mjs', '.claude/skills/run-plan/scripts/run-plan.mjs', '.claude/settings.json',
+    '.githooks/pre-commit', '.githooks/pre-push', '.githooks/post-commit',
+  ]) {
     assert.ok(!matchesAny(p, routing.exclude), `${p} must not be excluded`);
     assert.ok(skillsFor(p, routing).includes('security'), `${p} → security`);
   }

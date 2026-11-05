@@ -49,7 +49,8 @@ gh pr merge (instruction in AGENTS.md) ─► check.mjs pr-merge
 | `server/**`, `reviewer-core/**` (backend) | onion-architecture, fastify-best-practices, drizzle-orm-patterns, postgresql-table-design |
 | both | security (gating), zod and typescript-expert (advisory) |
 | `.claude/hooks/**`, `.claude/skills/*/scripts/**`, `.claude/settings.json` (agent tooling) | security (gating; not on `*.test.mjs`), typescript-expert (advisory, `.mjs`) |
-| not reviewed | `**/*.md`, skill content (`.claude/skills/*/{references,evals}/**`, `tile.json`, vendored `typescript-expert/scripts/**`), local `.claude/` state (`*.local.json`, `*.lock`, `worktrees/**`), `.githooks/**`, lockfiles, `server/clones/**`, `client/src/vendor/ui/**` |
+| `.githooks/**` (the gate itself) | security (gating) |
+| not reviewed | `**/*.md`, skill content (`.claude/skills/*/{references,evals}/**`, `tile.json`, vendored `typescript-expert/scripts/**`), local `.claude/` state (`*.local.json`, `*.lock`, `worktrees/**`), lockfiles, `server/clones/**`, `client/src/vendor/ui/**` |
 
 Other changed files under `.claude/` (for example `routing.json`) are not excluded: the hooks still
 require a review for them, and `collect.mjs` lists them under "no skill covers".
