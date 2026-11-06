@@ -22,6 +22,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [run-plan](run-plan/SKILL.md) | Shared | `/run-plan` only (`disable-model-invocation`): runs an approved plan — preflight + baseline, implementer, checks, test-writer ∥ architecture / security reviewers, merged fix loop, Run Report + manual plan-verifier hand-off; deterministic part in `scripts/run-plan.mjs` (v1.0.0) |
 | [pr-self-review](pr-self-review/SKILL.md) | Shared | Routes uncommitted changes to the UI / backend skills above, records PASS/BLOCKED; `.githooks` block commit/push on any CRITICAL (v1.0.0) |
 | [engineering-insights](engineering-insights/SKILL.md) | Shared | End-of-task capture of non-obvious learnings into each package's append-only `INSIGHTS.md` |
+| [workflow-retro](workflow-retro/SKILL.md) | Shared | `/workflow-retro` only (`disable-model-invocation`): **performance** retrospective of a multi-agent run, built on metadata only — wall-clock split, tokens and ~cost, parallelism, slowest agents / commands, friction, product metrics (lead time, time and cost per plan step / test / file), baseline vs earlier runs, ranked recommendations with expected savings; modes: this session, `--plan NNN`, `--session <uuid>`, `--list`; `scripts/collect.mjs` (schema 2) never outputs content, and a hook limits reads to the ledger and the collector JSON and writes to append-only `docs/retro/ledger/` (v2.0.0) |
 
 ## What Are Skills?
 

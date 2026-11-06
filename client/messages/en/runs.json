@@ -56,6 +56,8 @@
       "noMatches": "No matches for “{q}”.",
       "tokens": "~{count, number} tok",
       "skillRef": "{name} · v{version}",
+      "specRefsLabel": "Project context attached specs",
+      "specMissing": "The text of this document is not in the stored prompt.",
       "intent": "PR intent (dynamic)"
     },
     "tools": {

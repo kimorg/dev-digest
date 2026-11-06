@@ -9,9 +9,14 @@ import {
   vector,
   index,
   uniqueIndex,
+  primaryKey,
+  check,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { workspaces } from './core';
 import { repos } from './repos';
+import { agents } from './agents';
+import { skills } from './skills';
 
 // ============================================================ Context & codebase
 
@@ -124,3 +129,72 @@ export const onboarding = pgTable('onboarding', {
   json: jsonb('json').notNull(),
   generatedAt: timestamp('generated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+// ============================================================ Project context (SPEC-005)
+
+/** Markdown docs found in a repo clone by the last scan. Replaced wholesale on rescan. */
+export const contextDocuments = pgTable(
+  'context_documents',
+  {
+    repoId: uuid('repo_id')
+      .notNull()
+      .references(() => repos.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    type: text('type', { enum: ['docs', 'specs', 'insights', 'plans', 'readme'] }).notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    tokens: integer('tokens').notNull(),
+    tooLarge: boolean('too_large').notNull().default(false),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.repoId, t.path] }),
+    typeCheck: check(
+      'context_documents_type_check',
+      sql`${t.type} in ('docs','specs','insights','plans','readme')`,
+    ),
+    sizeCheck: check('context_documents_size_bytes_check', sql`${t.sizeBytes} >= 0`),
+    tokensCheck: check('context_documents_tokens_check', sql`${t.tokens} >= 0`),
+  }),
+);
+
+/** One row per repo: when it was last scanned and whether the doc cap truncated it. */
+export const contextScans = pgTable('context_scans', {
+  repoId: uuid('repo_id')
+    .primaryKey()
+    .references(() => repos.id, { onDelete: 'cascade' }),
+  scannedAt: timestamp('scanned_at', { withTimezone: true }).notNull(),
+  truncated: boolean('truncated').notNull().default(false),
+});
+
+/** Docs attached to an agent, in prompt order. Path-only (global across repos). */
+export const agentContextDocs = pgTable(
+  'agent_context_docs',
+  {
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    order: integer('order').notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.agentId, t.path] }),
+    pathIdx: index('agent_context_docs_path_idx').on(t.path),
+    orderCheck: check('agent_context_docs_order_check', sql`${t.order} >= 0`),
+  }),
+);
+
+/** Docs attached to a skill, in prompt order. */
+export const skillContextDocs = pgTable(
+  'skill_context_docs',
+  {
+    skillId: uuid('skill_id')
+      .notNull()
+      .references(() => skills.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    order: integer('order').notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.skillId, t.path] }),
+    pathIdx: index('skill_context_docs_path_idx').on(t.path),
+    orderCheck: check('skill_context_docs_order_check', sql`${t.order} >= 0`),
+  }),
+);

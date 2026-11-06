@@ -30,6 +30,10 @@ import { RepoIntelService } from '../modules/repo-intel/service.js';
 import type { FeatureModels } from '../modules/settings/types.js';
 import type { PrIntents } from '../modules/intent/types.js';
 import { buildIntentService } from '../modules/intent/wiring.js';
+import type { ProjectContext } from '../modules/project-context/types.js';
+import type { ContextDocSource } from '../modules/project-context/ports.js';
+import { CloneDocSource } from '../modules/project-context/infrastructure/clone-doc-source.js';
+import { buildProjectContextService } from '../modules/project-context/wiring.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
@@ -55,6 +59,10 @@ export interface ContainerOverrides {
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
+  /** Project-context facade — tests inject a fake. */
+  projectContext?: ProjectContext;
+  /** Clone doc reader for project context — tests inject an in-memory fake. */
+  contextDocSource?: ContextDocSource;
 }
 
 export class Container {
@@ -78,6 +86,8 @@ export class Container {
   private _reviewRepo?: ReviewRepository;
   private _repoIntel?: RepoIntel;
   private _prIntent?: PrIntents;
+  private _projectContext?: ProjectContext;
+  private _contextDocSource?: ContextDocSource;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
@@ -128,6 +138,20 @@ export class Container {
    */
   get prIntent(): PrIntents {
     return (this._prIntent ??= buildIntentService(this));
+  }
+
+  /**
+   * Project context facade (SPEC-005). One cached instance, used by review runs.
+   */
+  get projectContext(): ProjectContext {
+    if (this.overrides.projectContext) return this.overrides.projectContext;
+    return (this._projectContext ??= buildProjectContextService(this));
+  }
+
+  /** Reader of markdown docs in repo clones (node:fs); override slot for tests. */
+  get contextDocSource(): ContextDocSource {
+    if (this.overrides.contextDocSource) return this.overrides.contextDocSource;
+    return (this._contextDocSource ??= new CloneDocSource());
   }
 
   /** Import-graph builder (dependency-cruiser). T3 indexer pipeline only. */

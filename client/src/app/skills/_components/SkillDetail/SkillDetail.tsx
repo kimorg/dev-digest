@@ -10,6 +10,7 @@ import { useUpdateSkill } from "@/lib/hooks/skills";
 import { ConfigTab } from "./_components/ConfigTab";
 import { PreviewTab } from "./_components/PreviewTab";
 import { VersionsTab } from "./_components/VersionsTab";
+import { ContextTab } from "./_components/ContextTab";
 import { SKILL_TABS } from "./constants";
 import { s } from "./styles";
 
@@ -38,9 +39,10 @@ export function SkillDetail({ skill, tab, onTab }: SkillDetailProps) {
       <div style={s.tabsBar}>
         <Tabs tabs={tabs} value={tab} onChange={onTab} pad="0 24px" />
       </div>
-      <div style={s.body}>
+      <div style={s.body(tab === "context")}>
         {tab === "preview" && <PreviewTab body={skill.body} />}
         {tab === "versions" && <VersionsTab skill={skill} />}
+        {tab === "context" && <ContextTab skill={skill} />}
         {tab === "config" && <ConfigTab key={`${skill.id}:${skill.version}`} skill={skill} />}
       </div>
     </div>

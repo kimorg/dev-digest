@@ -50,6 +50,7 @@
     "tabs": {
       "config": "Config",
       "skills": "Skills",
+      "context": "Context",
       "evals": "Evals",
       "stats": "Stats",
       "ci": "CI"
@@ -90,6 +91,10 @@
     "saving": "Saving…",
     "saved": "Saved (v{version})",
     "savedToast": "Agent saved (v{version})"
+  },
+  "context": {
+    "viaSkills": "+{count, number} docs via skills · ~{tokens, number} tokens",
+    "loadError": "Couldn’t load this agent’s project context"
   },
   "skills": {
     "title": "Skills",

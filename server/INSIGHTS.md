@@ -259,6 +259,16 @@ progress signal. · **Evidence:** `server/src/modules/repo-intel/service.ts:192-
 `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BlastRadiusCard/helpers.ts:51` ·
 **Apply when:** polling index-state to know when an index or resync job completed.
 
+### 2026-11-06 — a clone doc read has three outcomes besides ok: `missing` (404), `too_large`, and `unsafe` (422)
+**Context:** plan 006 S5/S7, reading project-context docs from a repo clone. · **Insight:** the plan said
+"symlink → missing", but the spec wants a symlinked or outside-the-clone `?path=` to answer 422
+`invalid_context_path`, while a vanished file answers 404 `context_doc_not_found`. Folding symlinks into
+`missing` makes those two indistinguishable, so `CloneDocSource.read` returns a separate `unsafe` status; the
+file endpoint maps it to 422, and the scan and the review run treat it like `missing` (skip). · **Evidence:**
+`server/src/modules/project-context/infrastructure/clone-doc-source.ts:56,63,66`,
+`server/src/modules/project-context/service.ts:69,147,212` · **Apply when:** adding another reader of clone files
+whose API must tell "not there" from "not allowed".
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -357,6 +367,22 @@ steps run in the main thread with the user's OK. · **Evidence:** `server/src/db
 `server/src/db/migrations/meta/_journal.json` · **Apply when:** changing a schema whose generated migration
 is uncommitted but already migrated locally.
 
+### 2026-11-06 — drizzle-orm 0.38.4 `check()` works and `db:generate` emits the CHECK constraints
+**Context:** plan 006 S3, the first table-level CHECKs in the schema. · **Insight:** `check(name, sql\`…\`)` from
+`drizzle-orm/pg-core` in the table's extra-config callback is supported in 0.38.4; `pnpm db:generate` writes
+`CONSTRAINT "<name>" CHECK (…)` into `CREATE TABLE`, so no hand-written SQL is needed for enum-like text columns or
+`>= 0` guards. · **Evidence:** `server/src/db/schema/context.ts:150-155`,
+`server/src/db/migrations/0016_add_project_context.sql:6,17-18` · **Apply when:** a column needs a DB-level value
+constraint.
+
+### 2026-11-06 — `@fastify/rate-limit` rejects with a plain `statusCode: 429` object, which the error handler turned into `internal_error`
+**Context:** plan 006 S7, per-route rescan limit with the spec's `rate_limited` code. · **Insight:** the plugin's
+error is not an `AppError`, so the shared handler fell through to its generic 500/`internal_error` branch; it
+needs an explicit `statusCode === 429` branch that sends `{ error: { code: 'rate_limited' } }`. Rate limiting is off
+under `NODE_ENV=test`, so a test of it must build the app with `nodeEnv: 'development'` (it lane only). ·
+**Evidence:** `server/src/app.ts:164-167`; T-22 in `server/test/project-context.it.test.ts` · **Apply when:** adding
+`config.rateLimit` to a route or any plugin that throws non-`AppError` errors.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -384,7 +410,17 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-28 — plan 003 Smart Diff: PR file lists stop at 100: `getPullRequest` calls `pulls.listFiles` once with `per_page: 100`, types shared by `domain.ts` and `ports.ts` go in the module's `types.ts`
 - 2026-11-03 — plan 005 Blast Radius: the seeded PR #482 can never show a real blast radius: the seed repo has no clone, blast radius is a 1-hop read: `BFS_DEPTH` drives only `getCriticalPaths`, `POST /repos/:id/resync` answers 202 even when no job was enqueued, `GET /repos/:id/index-state` without a row returns a placeholder: `lastIndexedSha: ''`, epoch `updatedAt`
 - 2026-11-05 — /run-plan e2e runs (enabled skill count, throwaway worktrees): `constants.ts` importing a type from `helpers.ts` is a new `domain-is-pure` violation, even with `import type`
+- 2026-11-06 — plan 006 Project Context (/run-plan): a clone doc read has three outcomes besides ok, drizzle-orm 0.38.4 `check()` works, `@fastify/rate-limit` rejects with a plain 429 object, trace `tokens.specs` counts the wrapped slot (open question)
 
 ## Open Questions
 
 _Still unresolved — what is known, what isn't, where to look next._
+
+### 2026-11-06 — trace `tokens.specs` counts the wrapped Project context slot, not the sum of the docs' tokens
+**Context:** plan 006 T-23, comparing trace tokens with the Context tab. · **Insight:** `countPromptTokens` counts
+`assembly.specs`, i.e. the whole `<untrusted source="spec:…">` blocks joined, so it is larger than the sum of
+`spec_refs[].tokens` (74 vs 25 in one fixture). Each `spec_refs[].tokens` does equal the Context list count
+(NFR-4). Unresolved: AC-49 says `tokens.specs` is "the total" without saying which; the test asserts only `> 0`.
+Ask the spec owner before asserting equality. · **Evidence:** `server/src/modules/reviews/helpers.ts:124`,
+`server/src/modules/reviews/run-executor.ts:303` · **Apply when:** showing or testing `tokens.specs` next to
+document token counts.

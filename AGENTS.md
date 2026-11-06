@@ -59,6 +59,14 @@ Package maps: [server](server/AGENTS.md) · [client](client/AGENTS.md) ·
    - Verdict `BLOCKED` (any CRITICAL) → fix and re-run; never lower a severity, edit
      `.git/pr-self-review/`, use `--no-verify` or `PR_SELF_REVIEW_SKIP`. If the user asks to skip,
      say a CRITICAL is open and let them run the command themselves.
+5. **Multi-agent runs** (spec → plan → `/run-plan` → `plan-verifier`):
+   - **Fresh session for execution.** Once the plan is approved, run `/run-plan` and the manual
+     `plan-verifier` in a new session. The plan file and `.git/run-plan/NNN/` carry the state; the
+     planning conversation's context (~224k tokens on average in plan 006) makes every
+     orchestration turn slower and dearer.
+   - **Resume window.** `SendMessage` an agent only within ~55 min of its last activity. The
+     prompt cache lives 1 h; a later resume re-writes the whole context (planner, plan 006: 253k
+     tokens ≈ $2). Past that, start a new agent with the plan / spec path and the list of changes.
 
 ## Where docs live
 
@@ -70,4 +78,6 @@ Package maps: [server](server/AGENTS.md) · [client](client/AGENTS.md) ·
   (show it, relay the edits or the approval), then `WRITTEN`. Resume it with `SendMessage`, and
   never answer its questions yourself.
 - Root `docs/agent-prompts/` — reviewer system-prompt library (General, Security, Performance).
+- Root `docs/retro/ledger/` — append-only `/workflow-retro` records of multi-agent runs and
+  per-agent / per-skill observations and proposals ([format](docs/retro/ledger/README.md)).
 - Root `docs/plans/` — approved Development Plans (`NNN-<slug>.md`) from `implementation-planner` (built from an approved spec in `specs/` or `<package>/specs/`), executed by the `/run-plan` skill: `implementer` (code) → `test-writer` (tests from the spec) ∥ reviewers → fix loop. `plan-verifier` is run manually afterwards.

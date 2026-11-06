@@ -13,7 +13,16 @@ export const queryKeys = {
   repos: () => ["repos"] as const,
   pulls: (repoId: string | null | undefined) => ["pulls", repoId] as const,
   pull: (prId: string | number | null | undefined) => ["pull", prId] as const,
-  contextFiles: (repoId: string | null | undefined) => ["context-files", repoId] as const,
+  /** No repo → every repo's document list (for invalidation). */
+  contextFiles: (repoId?: string | null) =>
+    repoId === undefined ? (["context-files"] as const) : (["context-files", repoId] as const),
+  /** No path → every file of the repo (for invalidation). */
+  contextFile: (repoId: string | null, path?: string | null) =>
+    path === undefined ? (["context-file", repoId] as const) : (["context-file", repoId, path] as const),
+  /** No agent → every agent's attachments (for invalidation). */
+  agentContext: (agentId?: string | null) =>
+    agentId === undefined ? (["agent-context"] as const) : (["agent-context", agentId] as const),
+  skillContext: (skillId: string | null | undefined) => ["skill-context", skillId] as const,
   repoIntelState: (repoId: string | null | undefined) => ["repo-intel-state", repoId] as const,
 
   agents: () => ["agents"] as const,

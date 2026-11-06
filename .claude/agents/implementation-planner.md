@@ -21,7 +21,7 @@ skills:
   - mermaid-diagram
   # Not in implementer's set: EARS is a spec rule, RTL plans the tests test-writer writes
   - ears-requirements
-maxTurns: 40
+maxTurns: 100
 color: blue
 ---
 

@@ -80,7 +80,16 @@ Implementation Report's Deviations to find moved seams, never to relax an expect
   behaviour. No tests for cases that cannot happen.
 - **Repo invariants:** never touch or search `server/clones/`; skip `node_modules/`, `.next/`,
   `dist/`; package `AGENTS.md` wins over a skill on conflict — say which rule you followed.
-- Bash is limited by a hook to read-only commands and the test/typecheck runners. No git writes.
+- Bash is limited by a hook to read-only commands, the test/typecheck runners, `pnpm exec next typegen`
+  and `docker info` / `docker ps`. No git writes.
+- **Bash: blocked → use instead** (the `agent-guard` hook; every denied command is a wasted turn):
+  - `$(…)` / backticks → run the two commands one after the other.
+  - `python3`, `node -e`, `sh -c` scripts → Read / Grep / Glob or the allowed commands.
+  - `cat > f`, heredocs, `>` / `tee` into a file → Write / Edit where you have them (test-writer);
+    read-only agents write nothing.
+  - `curl` / any network → none; say in the report what it would have checked.
+  - `sed -n` → line, `$` or `/re/` addresses, then `p` only: `'12,40p'`, `'/^## Tests/,/^## /p'`.
+  - Fine: `for f in a b; do <allowed cmd> $f; done`, `timeout 120 <allowed cmd>`. Not: `FOO=1 cmd`.
 - Answer in the language of the request; keep code, paths and identifiers as-is.
 
 ## Step 0 — Is the target clear enough?

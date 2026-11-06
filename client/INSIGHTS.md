@@ -61,6 +61,17 @@ Event('input', { bubbles: true }))`. Assigning `ta.value` alone gets reverted by
 `client/src/app/repos/[repoId]/conventions/_components/ConventionsView/ConventionsView.test.tsx` · **Apply when:**
 testing a page-level view, or typing into a React input from a headless-Chrome script.
 
+### 2026-11-06 — screenshot a dnd-kit drag mid-way with CDP mouse events, then cancel with Escape (no save)
+**Context:** checking the context picker's drag visuals against the agent Skills tab. · **Insight:**
+for a *visual* check the keyboard flow (Space/ArrowDown/Space) is not needed and it saves on drop. Instead,
+send `Input.dispatchMouseEvent` `mousePressed` on the grip, then about 10 `mouseMoved` steps with `buttons: 1`
+past the `PointerSensor` 4 px activation distance, then take a screenshot and read the sortable wrappers' inline
+`transform`/`zIndex`. A `keyDown` Escape cancels the drag, so the order and the dev DB stay unchanged.
+Seeded data: only skill `8fda343c…` ("Breaking Change") has ≥ 2 attached docs; the agents have ≤ 1. ·
+**Evidence:** `client/src/components/context-docs-picker/SortableContextDocRow.tsx`,
+`client/src/components/context-docs-picker/ContextDocsPicker.tsx` · **Apply when:** verifying how any dnd-kit
+list looks during a drag.
+
 ## What Doesn't Work
 
 _Dead ends and anti-patterns — what was tried and why it failed. The most skipped section, and the most valuable._
@@ -317,6 +328,49 @@ scroll on narrow viewports. · **Evidence:** `client/src/vendor/ui/kit/Modal.tsx
 `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BlastRadiusCard/_components/BlastGraphModal/graph-layout.ts`
 (`graphModalWidth`) · **Apply when:** putting fixed-width content (canvas, SVG, table) into a kit `Modal`.
 
+### 2026-11-06 — the kit `IconBtn` takes a closed prop set and never forwards a `ref`
+**Context:** plan 006 S12/S13, returning focus inside the preview panel and the spec-ref modal. · **Insight:**
+`IconBtn` destructures only `icon/label/size/active/onClick/danger` and renders its own `<button>`, so a `ref`
+passed to it (React 19 treats `ref` as a prop) is dropped and `ref.current` stays `null`. To focus inside a panel,
+put `tabIndex={-1}` and the ref on the panel container and focus that. · **Evidence:**
+`client/src/vendor/ui/primitives/IconBtn.tsx:4-18`, `client/src/components/context-docs-picker/ContextPreviewPanel.tsx:34` ·
+**Apply when:** managing focus around a kit `IconBtn` (including close buttons in panels).
+
+### 2026-11-06 — jsdom's `Blob` has no `.text()`: read a downloaded Blob with `FileReader`
+**Context:** plan 006 T-34, asserting the Download content passed to `URL.createObjectURL`. · **Insight:** in the
+vitest jsdom env `blob.text()` is not a function; wrap `FileReader.readAsText` in a promise instead. · **Evidence:**
+`client/src/app/repos/[repoId]/context/_components/ContextDocPreview/ContextDocPreview.test.tsx:61` · **Apply when:**
+testing any Blob/file download.
+
+### 2026-11-06 — a `messages/en/*.json` with an array fails typecheck as `NextIntlClientProvider` messages
+**Context:** plan 006 context tests (`context.json` has `empty.patterns: [...]`). · **Insight:** the inferred JSON
+type with an array is not assignable to `AbstractIntlMessages`, so `pnpm typecheck` fails in the test; cast it
+(`contextJson as unknown as AbstractIntlMessages`). · **Evidence:**
+`client/src/app/repos/[repoId]/context/_components/ProjectContextView/ProjectContextView.test.tsx:28` · **Apply when:**
+a message file gains an array and is passed to a test provider.
+
+### 2026-11-06 — `RunTraceDrawer` is itself `role=dialog`: pick a modal opened inside it with `getAllByRole("dialog").at(-1)`
+**Context:** plan 006 T-42, the spec-ref full-text modal inside the trace drawer. · **Insight:** `getByRole("dialog")`
+finds two dialogs and throws; the inner modal is the last one in document order. · **Evidence:**
+`client/src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/RunTraceDrawer.test.tsx:139` · **Apply when:**
+testing any `Modal` opened from the trace drawer.
+
+### 2026-11-06 — `ProjectContextView` renders its pane test ids while loading: wait for loaded content before querying inside them
+**Context:** plan 007 tests for the Project Context page. · **Insight:** `context-docs-pane` and
+`context-preview-pane` are rendered by the loading branch too (skeleton, `aria-busy="true"`), so
+`findByTestId` resolves before the data arrives and `within(pane)` queries fail. Two first-draft
+tests failed this way. Await a piece of loaded content (a row path) first. · **Evidence:**
+`client/src/app/repos/[repoId]/context/_components/ProjectContextView/ProjectContextView.tsx:59,68` (loading)
+vs `:97,106` (loaded) · **Apply when:** testing any state of the Project Context page.
+
+### 2026-11-06 — jsdom counts a `hidden` tooltip in the accessible description via `aria-describedby`
+**Context:** plan 007 T-4, the Rescan tooltip. · **Insight:** an element with `hidden` that
+`aria-describedby` points to still counts in jsdom's accessible-description computation, so
+`toHaveAccessibleDescription(text)` passes while the tooltip is closed. A visually-hidden style
+is not needed for the assertion. · **Evidence:**
+`client/src/app/repos/[repoId]/context/_components/ContextDocToolbar/ContextDocToolbar.tsx:50,53`,
+`ContextDocToolbar.test.tsx:69` · **Apply when:** asserting a hover/focus tooltip that toggles `hidden`.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -372,7 +426,17 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-11-03 — plan 005 Blast Radius: the kit `Modal` does not close on Esc: the caller handles the key, a card test crashes after a sibling query is added: the fetch mock answers every URL with one body
 - 2026-11-03 — Overview width + wrapping caller paths + empty Prior PRs: in jsdom a `<wbr>` inside a link adds a space to its accessible name
 - 2026-11-03 — Blast graph modal: no scrollbar, file names only: a fixed-size canvas in the kit `Modal` gets a horizontal scrollbar unless the modal width is derived from it
+- 2026-11-06 — plan 006 Project Context (/run-plan): the kit `IconBtn` never forwards a `ref`, jsdom `Blob` has no `.text()`, a messages JSON with an array fails typecheck as `NextIntlClientProvider` messages, `RunTraceDrawer` is itself `role=dialog`
+- 2026-11-06 — plan 007 Project Context design (/run-plan): `ProjectContextView` renders its pane test ids while loading, jsdom counts a `hidden` tooltip in the accessible description
+- 2026-11-06 — context picker drag like the Skills tab: screenshot a dnd-kit drag mid-way with CDP mouse events, then cancel with Escape (no save)
 
 ## Open Questions
 
 _Still unresolved — what is known, what isn't, where to look next._
+
+### 2026-11-06 — Rescan tooltip while rescanning: hover-only, because `Button loading` disables it
+**Context:** plan 007, EC-25. · **Insight (unverified in a browser):** `Button`'s `loading` prop
+disables the button, so it can't take focus during a rescan and the hint shows only on hover — if
+a browser even fires hover events on a disabled button. · **Evidence:**
+`client/src/app/repos/[repoId]/context/_components/ContextDocToolbar/ContextDocToolbar.tsx:48` ·
+**Next:** check with manual V-7 (CDP hover on the disabled button in Chrome).

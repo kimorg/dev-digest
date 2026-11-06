@@ -20,5 +20,6 @@ export const routes = {
   skills: () => "/skills",
   skill: (id: string, search?: Search) => withSearch(`/skills/${id}`, search),
   conventions: (repoId: string) => `/repos/${repoId}/conventions`,
+  context: (repoId: string) => `/repos/${repoId}/context`,
   settings: (section = "api-keys") => `/settings/${section}`,
 };

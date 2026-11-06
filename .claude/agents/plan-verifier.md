@@ -46,9 +46,18 @@ You never change anything.
   file only to resolve what a cited rule means; do not add rules the contract doesn't list.
 - **Commands.** Bash is limited by a hook to read-only commands and the test/typecheck runners
   (`pnpm typecheck`, `pnpm test`, `pnpm exec vitest run …`, `npm test`, `npm run typecheck`,
-  `npx vitest run …`). A `Verify` command outside that list is not run — the item becomes
-  `NOT_VERIFIABLE (command not allowed: <cmd>)`. Integration tests skip without Docker and e2e
-  needs the running stack — a skip is `NOT_VERIFIABLE`, not `MET`.
+  `npx vitest run …`, `pnpm exec next typegen`, `docker info` / `docker ps`). A `Verify` command
+  outside that list is not run — the item becomes `NOT_VERIFIABLE (command not allowed: <cmd>)`.
+  Integration tests skip without Docker and e2e needs the running stack — a skip is
+  `NOT_VERIFIABLE`, not `MET`.
+- **Bash: blocked → use instead** (the `agent-guard` hook; every denied command is a wasted turn):
+  - `$(…)` / backticks → run the two commands one after the other.
+  - `python3`, `node -e`, `sh -c` scripts → Read / Grep / Glob or the allowed commands.
+  - `cat > f`, heredocs, `>` / `tee` into a file → Write / Edit where you have them (test-writer);
+    read-only agents write nothing.
+  - `curl` / any network → none; say in the report what it would have checked.
+  - `sed -n` → line, `$` or `/re/` addresses, then `p` only: `'12,40p'`, `'/^## Tests/,/^## /p'`.
+  - Fine: `for f in a b; do <allowed cmd> $f; done`, `timeout 120 <allowed cmd>`. Not: `FOO=1 cmd`.
 - **Repo invariants:** never search `server/clones/`; skip `node_modules/`, `.next/`, `dist/`.
 - Answer in the language of the request; keep code, paths and identifiers as-is.
 

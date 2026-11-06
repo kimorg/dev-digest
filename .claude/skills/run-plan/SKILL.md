@@ -21,6 +21,10 @@ spec-creator → approved spec (AC-n EARS) → implementation-planner → plan (
   → plan-verifier (manual, by the user) → doc-writer (optional) → pr-self-review → commit
 ```
 
+Run it — and the manual plan-verifier — in a **fresh session** once the plan is approved (AGENTS.md,
+Session protocol §5): the plan file and `.git/run-plan/NNN/` carry the state, the planning context
+would only make every orchestration turn slower and dearer.
+
 The deterministic part lives in `scripts/run-plan.mjs` (below: `rp`). Every call prints JSON;
 exit 1 means a gate failed and the JSON says why.
 

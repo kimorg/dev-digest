@@ -60,6 +60,15 @@ export const SkillRef = z.object({
 });
 export type SkillRef = z.infer<typeof SkillRef>;
 
+export const SpecRef = z.object({
+  path: z.string(),
+  type: z.string(),
+  tokens: z.number().int(),
+  source: z.enum(['agent', 'skill']),
+  skill_id: z.string().nullable(),
+});
+export type SpecRef = z.infer<typeof SpecRef>;
+
 export const PromptAssembly = z.object({
   system: z.string(),
   skills: z.string().nullish(),
@@ -79,6 +88,8 @@ export const PromptAssembly = z.object({
   tokens: PromptTokens.nullish(),
   /** Skills injected into the `skills` slot, in order. Old traces lack it. */
   skill_refs: z.array(SkillRef).nullish(),
+  /** Project-context docs injected into the `specs` slot, in order. Old traces lack it. */
+  spec_refs: z.array(SpecRef).nullish(),
 });
 export type PromptAssembly = z.infer<typeof PromptAssembly>;
 

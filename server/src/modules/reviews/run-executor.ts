@@ -9,6 +9,7 @@ import { REVIEW_STRATEGY } from './constants.js';
 import { countPromptTokens, renderSkillBlock, taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 import type { IntentUsage, PrIntents } from '../intent/types.js';
+import type { ProjectContext } from '../project-context/types.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -59,6 +60,7 @@ export class ReviewRunExecutor {
     private agents: Container['agentsRepo'],
     private intents: PrIntents,
     private countTokens: (text: string) => number,
+    private projectContext: ProjectContext,
   ) {}
 
   /**
@@ -211,6 +213,15 @@ export class ReviewRunExecutor {
         );
       }
 
+      // SPEC-005 — project context docs (agent first, then enabled skills), read
+      // from the repo clone. Untrusted data; reviewer-core wraps them.
+      const projectCtx = await this.projectContext.resolveForRun(
+        workspaceId,
+        { id: repo.id, clonePath: repo.clonePath },
+        agent.id,
+        (m) => runLog.info(m),
+      );
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -230,6 +241,8 @@ export class ReviewRunExecutor {
         ...(repoMap ? { repoMap } : {}),
         // L02 — skills, same omit-when-empty contract.
         ...(skillBlocks.length > 0 ? { skills: skillBlocks } : {}),
+        // SPEC-005 — project context, same omit-when-empty contract.
+        ...(projectCtx.docs.length > 0 ? { specs: projectCtx.docs } : {}),
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
@@ -294,6 +307,7 @@ export class ReviewRunExecutor {
           version: l.skill.version,
           tokens: this.container.tokenizer.count(skillBlocks[i]!),
         })),
+        spec_refs: projectCtx.refs,
       };
 
       // ---- Observability: agent_runs + ONE run_traces document --------------
@@ -336,7 +350,7 @@ export class ReviewRunExecutor {
         })),
         raw_output: outcome.raw,
         memory_pulled: [],
-        specs_read: [],
+        specs_read: projectCtx.refs?.map((r) => r.path) ?? [],
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
