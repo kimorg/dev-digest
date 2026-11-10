@@ -287,6 +287,23 @@ d('project context API (Testcontainers pg)', () => {
     expect(pathsOf(again.json())).toEqual(['specs/a.md']);
   });
 
+  it('concurrent PUTs of one list all succeed and leave one of the sent lists, not a mix (EC-6)', async () => {
+    const lists = [
+      ['server/AGENTS.md', 'specs/a.md'],
+      ['specs/a.md', 'server/AGENTS.md'],
+      ['server/docs/x.md'],
+      ['specs/a.md', 'server/docs/x.md', 'server/AGENTS.md'],
+      ['server/AGENTS.md'],
+      ['server/docs/x.md', 'specs/a.md'],
+    ];
+    for (const [kind, id] of [['agents', (await mkAgent()).id], ['skills', (await mkSkill()).id]] as const) {
+      const results = await Promise.all(lists.map((paths) => put(kind, id, paths)));
+      expect(results.map((r) => r.statusCode)).toEqual(lists.map(() => 200));
+      const stored = pathsOf((await app.inject({ method: 'GET', url: `/${kind}/${id}/context` })).json());
+      expect(lists).toContainEqual(stored);
+    }
+  });
+
   it('PUT with <pkg>/CLAUDE.md is 422 invalid_context_path and the stored list is unchanged (AC-33, EC-16)', async () => {
     const agent = await mkAgent();
     await put('agents', agent.id, ['server/AGENTS.md']);

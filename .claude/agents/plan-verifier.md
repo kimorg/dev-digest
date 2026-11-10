@@ -57,7 +57,9 @@ You never change anything.
     read-only agents write nothing.
   - `curl` / any network → none; say in the report what it would have checked.
   - `sed -n` → line, `$` or `/re/` addresses, then `p` only: `'12,40p'`, `'/^## Tests/,/^## /p'`.
-  - Fine: `for f in a b; do <allowed cmd> $f; done`, `timeout 120 <allowed cmd>`. Not: `FOO=1 cmd`.
+  - Fine: `for f in a b; do <allowed cmd> $f; done`, `for f in src/*.ts; do <allowed cmd> "$f"; done`
+    (a glob loop needs `"$f"`), `timeout 120 <allowed cmd>`, `ls ./*`. Not: `FOO=1 cmd`, a bare `*` / `?x`
+    at the start of a word, `sed -n "$p"`, `cd server/clones/…`.
 - **Repo invariants:** never search `server/clones/`; skip `node_modules/`, `.next/`, `dist/`.
 - Answer in the language of the request; keep code, paths and identifiers as-is.
 

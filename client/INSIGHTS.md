@@ -227,6 +227,17 @@ until the last agent finished. The refresh now follows the 4 s `usePrActiveRuns`
 `…/PrDetailView/PrDetailView.tsx:51`, `…/RunStatus/RunStatus.tsx:30` · **Apply when:** anything on the PR
 page must react to a review run finishing.
 
+### 2026-11-06 — optimistic full-list saves need `scope` + "only the newest save writes the cache"
+**Context:** self-review finding on `useSetContextPaths`. · **Insight:** each toggle PUTs the whole list, so
+quick toggles overlap. The old response's `onSuccess` overwrote the newer optimistic list, and the next toggle
+was then built from that stale list. The PUTs could also reach the server out of order. TanStack v5
+`scope: { id }` runs `onMutate` at once but sends the requests one at a time, in order. In `onSuccess` /
+`onError`, write or roll back only when `qc.isMutating({ mutationKey, exact: true }) === 1` (the running save
+counts itself). A hook test with hand-resolved PUTs shows it. `useSetAgentSkills`
+(`client/src/lib/hooks/agents.ts:108`) still has the old pattern. · **Evidence:**
+`client/src/lib/hooks/context.ts` (`useSetContextPaths`), `client/src/lib/hooks/context.test.tsx` ·
+**Apply when:** writing any optimistic mutation that sends the full list.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -429,6 +440,7 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-11-06 — plan 006 Project Context (/run-plan): the kit `IconBtn` never forwards a `ref`, jsdom `Blob` has no `.text()`, a messages JSON with an array fails typecheck as `NextIntlClientProvider` messages, `RunTraceDrawer` is itself `role=dialog`
 - 2026-11-06 — plan 007 Project Context design (/run-plan): `ProjectContextView` renders its pane test ids while loading, jsdom counts a `hidden` tooltip in the accessible description
 - 2026-11-06 — context picker drag like the Skills tab: screenshot a dnd-kit drag mid-way with CDP mouse events, then cancel with Escape (no save)
+- 2026-11-06 — self-review fixes (context saves): optimistic full-list saves need `scope` + "only the newest save writes the cache"
 
 ## Open Questions
 

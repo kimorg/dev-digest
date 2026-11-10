@@ -102,6 +102,16 @@ shape in the module's `types.ts`, imported by constants, helpers and repository.
 `.claude/skills/pr-self-review/scripts/checks.mjs:57` · **Apply when:** a plan puts a shape in `helpers.ts` that a
 constant in `constants.ts` needs.
 
+### 2026-11-06 — delete-then-insert of a child list in a transaction still races: concurrent PUTs fail with 23505 → 500
+**Context:** self-review finding on `PUT /agents/:id/context`. · **Insight:** under READ COMMITTED two
+transactions both `DELETE` the old rows, and the second `INSERT` then collides on the `(agent_id, path)`
+primary key. Six parallel `app.inject` PUTs gave three 500s. Fix: inside the transaction, first
+`select … from agents where id and workspace_id … .for('no key update')` (enough to serialise writers per parent, and unlike FOR UPDATE it does not block FK checks of inserts into the parent's other child tables). It
+moves the workspace check into the same transaction. · **Evidence:**
+`server/src/modules/project-context/repository.ts` (`setAgentPaths`, `setSkillPaths`),
+`server/test/project-context.it.test.ts` ("concurrent PUTs of one list …") · **Apply when:** a repository
+replaces a whole child list (agent skills, context docs, any join table) by delete + insert.
+
 ## Codebase Patterns
 
 _Conventions and architectural decisions (with the reason) that the code doesn't explain._
@@ -411,6 +421,7 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-11-03 — plan 005 Blast Radius: the seeded PR #482 can never show a real blast radius: the seed repo has no clone, blast radius is a 1-hop read: `BFS_DEPTH` drives only `getCriticalPaths`, `POST /repos/:id/resync` answers 202 even when no job was enqueued, `GET /repos/:id/index-state` without a row returns a placeholder: `lastIndexedSha: ''`, epoch `updatedAt`
 - 2026-11-05 — /run-plan e2e runs (enabled skill count, throwaway worktrees): `constants.ts` importing a type from `helpers.ts` is a new `domain-is-pure` violation, even with `import type`
 - 2026-11-06 — plan 006 Project Context (/run-plan): a clone doc read has three outcomes besides ok, drizzle-orm 0.38.4 `check()` works, `@fastify/rate-limit` rejects with a plain 429 object, trace `tokens.specs` counts the wrapped slot (open question)
+- 2026-11-06 — self-review fixes (context paths): delete-then-insert of a child list in a transaction still races: concurrent PUTs fail with 23505 → 500
 
 ## Open Questions
 

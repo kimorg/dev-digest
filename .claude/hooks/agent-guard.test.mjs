@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -62,7 +62,7 @@ test('readonly allows read-only commands only', () => {
     'git diff HEAD -- server/src', 'git --no-pager log --oneline -5', 'git -C server status --porcelain',
     'git status --porcelain && git diff --stat', 'rg -n "foo|bar" server/src 2>/dev/null', 'ls -la | head -20',
     'cd server && git diff HEAD', 'grep -rn "x" client/src 2>&1 | wc -l',
-    'sed -n 1,110p server/src/a.ts', "sed -n '185,250p' docs/plans/006-x.md", 'sed -n 12p a.ts b.ts', 'sed -n "40,$p" a.ts',
+    'sed -n 1,110p server/src/a.ts', "sed -n '185,250p' docs/plans/006-x.md", 'sed -n 12p a.ts b.ts', "sed -n '40,$p' a.ts",
   ]) assert.equal(bash('readonly', c), 0, c);
   for (const c of [
     'pnpm test', 'git commit -m x', 'git checkout .', 'git diff --output=/tmp/x', 'git -c core.pager=sh log',
@@ -107,6 +107,189 @@ test('for loops and timeout: the loop body and the timed command are checked lik
   }
   assert.equal(bash('readonly', 'timeout 5 pnpm test'), 2, 'timeout does not widen the allowlist');
   for (const c of ['for f in a; do wc; done', 'timeout 5 wc']) assert.equal(bash('workflow-retro', c), 2, `workflow-retro: ${c}`);
+});
+
+test('quoting, $-expansions and loop variables cannot smuggle a forbidden flag', () => {
+  for (const profile of ['test-writer', 'verifier', 'readonly']) {
+    for (const c of [
+      'for f in a.ts b.ts; do grep -n x "$f"; done', 'for f in server/src/*.ts; do wc -l "${f}"; done',
+      "for f in 'a.ts' \"b.ts\"; do echo $f; done 2>&1 | head", "grep -n '$HOME' a.ts", "rg -n 'x --pre y' src",
+      'git log --output-indicator-new=+ -1', 'git log --oneline -3',
+    ]) assert.equal(bash(profile, c), 0, `${profile}: ${c}`);
+    for (const c of [
+      // loop words that are, or could expand to, a flag
+      'for a in -exec; do find . $a sh -c id {} +; done', 'for a in -delete; do find . -name x $a; done',
+      'for a in --output=/tmp/x; do git diff $a; done', 'for a in -i; do sed -n 1p $a f; done',
+      'for a in --pre=sh; do rg $a x; done', "for a in '-delete'; do find . $a; done", 'for a in "x -delete"; do find . -name $a; done',
+      'for a in *; do find . $a; done', 'for a in {-delete,x}; do find . $a; done', 'for a in $HOME; do ls $a; done',
+      // a flag built from a variable, or a command name from a variable
+      'for a in delete; do find . -$a; done', 'for a in put; do git diff --out$a=/tmp/x; done', 'for a in x; do cat$a f; done',
+      // expansions that are not a loop variable
+      'find . -name x${IFS}-delete', 'find . $IFS-delete', "find . $'\\055delete'", 'ls $HOME', 'cat "$OPENAI_API_KEY"',
+      'echo $1', 'for f in a; do ls $g; done',
+      // quotes inside a flag
+      "find . '-delete'", "find . -del''ete", 'find . "-exec" rm {} +', "git diff '--output=/tmp/x'", 'git diff --outp=/tmp/x',
+      "rg '--pre=sh' x", 'git grep -iOvim x', "pnpm exec vitest run '-u'",
+      // brace expansion, line continuations, and a loop variable that is reassigned or is bash's `$_`
+      'find /tmp/x {-delete,-print}', 'git diff {--output=/tmp/pwn,HEAD}', 'git grep {-Otouch,-n} x', 'rg {--pre=bash,-n} x',
+      'for a in src/{a,b}.ts; do ls $a; done', 'find /tmp/x -del\\\nete', 'find /tmp/x "-del\\\nete"',
+      'for f in a; do printf -v f %s -delete; find /tmp/x $f; done', 'for _ in a; do echo -delete; find /tmp/x $_; done',
+      // `$[…]` arithmetic, loop words bash would evaluate, and a loop variable used outside its loop
+      "for f in 'x[$''(id)]'; do echo $[f]; done", 'echo $[1]', 'echo "$[1]"', "for f in 'a>b'; do ls $f; done",
+      "for f in 'a(b)'; do ls $f; done", 'echo $http_proxy; for http_proxy in a; do ls; done',
+      'for f in a; do ls; done; cat $f', 'for f in a; do ls; done | grep $f',
+      // a comment or heredoc hiding a quote; a loop opened through timeout or without `do`
+      "echo # '\nfind /tmp/x -delete\necho # '", "echo # '\nrm -rf /tmp/x; touch /tmp/y > /tmp/z\necho # '",
+      "cat <<true\necho '\ntrue\nfind /tmp/x -delete\ncat <<true\n'\ntrue", 'grep x <<< "y"', 'ls # comment',
+      'timeout 5 for http_proxy in a\necho $http_proxy', 'for http_proxy in a\necho $http_proxy', 'timeout 5 done',
+    ]) assert.equal(bash(profile, c), 2, `${profile}: ${c}`);
+  }
+  for (const c of ['pnpm test --u', 'pnpm test -- --u', 'npx vitest run --u', 'pnpm exec vitest run --upd']) {
+    assert.equal(bash('test-writer', c), 2, c);
+  }
+  assert.equal(bash('readonly', "grep -n 'a#b' x.ts; grep -c x#y x.ts"), 0, '# inside a word is text');
+  assert.equal(bash('verifier', 'for f in a.ts; do timeout 60 grep -c x $f; done'), 0, 'timeout inside a loop body');
+  assert.equal(bash('test-writer', 'pnpm test {-u,}'), 2, 'pnpm test {-u,}');
+  assert.equal(bash('test-writer', 'pnpm test -$[0]u'), 2, 'pnpm test -$[0]u');
+  assert.equal(bash('readonly', "grep -n '$[x]' a.ts"), 0, 'single-quoted $[ is text');
+  assert.equal(bash('readonly', 'for f in a.ts; do for g in 1 2; do echo $f $g; done; echo $f; done'), 0, 'nested loops');
+  assert.equal(bash('readonly', "grep -n '{a,b}' x.ts"), 0, 'quoted braces are fine');
+  for (const p of ['server/test/-delete', 'client/src/-x/a.test.ts']) assert.equal(write('test-writer', p), 2, p);
+});
+
+// Each blocked case below was confirmed to write a file or run a program in real bash (GNU sed 4.9, ripgrep 15,
+// uutils sort, tree 2.3, file 5.46, tsc, vitest 2, npm 10) before the fix.
+const RO = ['test-writer', 'verifier', 'readonly'];
+const allBash = (profiles, cmds, code) => {
+  for (const profile of profiles) for (const c of cmds) assert.equal(bash(profile, c), code, `${profile}: ${c}`);
+};
+
+test('a backslash-escaped quote cannot hide a redirect or a process substitution', () => {
+  allBash(RO, [
+    "echo \\' > server/src/index.ts \\'", "echo \\' >> server/src/index.ts \\'", "diff \\' <(touch /tmp/x) \\'",
+    "cat \\' <(rm -rf server/src) \\'", 'echo \\" > x \\"', "grep -n x a.ts \\'#\\' > out",
+  ], 2);
+  // `\\'` is an escaped backslash and then a real quote: the `>` is inside it.
+  allBash(RO, ["echo \\'", "echo \\\\' > x '", 'echo \\> x', "grep -n 'a>b' a.ts", 'grep -n "a>b" a.ts', "grep -n \"it's\" a.ts", 'grep -c "\\"x\\"" a.ts'], 0);
+});
+
+test('the command is the exact allowed name — not a path through a folder named like it, nor a script suffix', () => {
+  allBash(RO, [
+    'file/../../../../../../usr/bin/touch /tmp/x', 'cd /usr/share && file/../../bin/sh -c id',
+    'cd client/node_modules && diff/../../../../../../usr/bin/rm -rf x', 'true/../../bin/bash -c id', 'cat-x y', 'ls.sh',
+    'timeout 5 file/../../bin/sh', 'git diffx', 'git log/x',
+  ], 2);
+  allBash(['test-writer', 'verifier'], ['pnpm test:e2e', 'pnpm run test:x', 'pnpm typecheck-x', 'npm run test:x', 'docker ps-x', 'npx vitest run.x'], 2);
+  allBash(RO, ['cat a.ts', 'ls', 'pwd', 'true', 'git diff-tree --no-commit-id --name-only -r HEAD', 'git status'], 0);
+});
+
+test('fd duplication takes digits only and /dev/null a whole word', () => {
+  allBash(RO, [
+    'echo x >&1x', 'echo x 1>&2y', 'cd docs/plans && echo x >&006-x.md', 'cd server/drizzle && echo x >&0001_init.sql',
+    "ls >/dev/null'x'", 'ls >/dev/nullx', 'ls 2>/dev/null.x', 'ls >/dev/null\\x', 'ls >/dev/null2>&1',
+  ], 2);
+  allBash(RO, ['ls 2>&1 | head', 'ls >/dev/null 2>&1', 'ls &>/dev/null', 'ls 2>/dev/null', 'git status 2>&1'], 0);
+});
+
+test('a sed script may not come from a loop variable (e = run each line, w = write)', () => {
+  allBash(RO, [
+    'for p in e; do sed -n $p f; done', 'for p in 1e; do sed -n "$p" f; done', 'for p in 2wout; do sed -n 1,$p f; done',
+    'for p in wserver/src/index.ts; do sed -n $p README.md; done',
+  ], 2);
+  allBash(RO, ['for f in a b; do sed -n 1,5p $f; done', "sed -n '40,$p' a.ts", "for f in a.ts; do sed -n '1,$p' \"$f\"; done"], 0);
+});
+
+test('read-only commands may not write or run a program through their own flags', () => {
+  allBash(RO, [
+    'sort -o x a', 'sort --output=x a', 'sort --o=x a', 'sort -no x a', 'sort -S 1K --compress-program=sh a', 'sort --co=sh a',
+    'sort -T /tmp a', 'uniq a b', 'uniq -c a b', 'uniq -- a b', 'tree -o x', 'tree -R -L 1', 'tree --output x',
+    'file -C -m x', 'file --compile -m x', 'rg --hostname-bin=./x --hyperlink-format=default y', 'rg --hostname-bin ./x y',
+    'rg --pre=sh x', 'git grep -Osh x', 'git -C . grep -O x', 'git grep --open-files-in-pager=sh x',
+  ], 2);
+  allBash(RO, [
+    'sort -n a', 'sort -t: -k2 -nr a', 'sort -u a', 'sort --reverse --numeric-sort a', 'uniq -c', 'uniq -c a',
+    'sort a | uniq -c | sort -rn | head', 'tree -L 2 server/src', 'file a.ts', 'rg -n x src', 'git log -SOptions --oneline',
+    "git log -S'Options'", 'git diff -O/dev/null HEAD',
+  ], 0);
+});
+
+test('globs cannot expand into flags, and a glob loop variable must be quoted', () => {
+  allBash(RO, [
+    'find * -name x', 'rg x *', 'sed -n 1p *', 'ls *.md', 'ls ""*', 'ls ?x', 'find . -name x -delet[e]', 'find . -de*',
+    'rg x --pre*', 'ls @(a)', 'grep -c x [-]i', 'for f in server/test/*; do find $f; done',
+    'for f in src/*.ts; do wc -l ${f}; done', 'for f in a* b; do rg x $f; done', 'for f in src/*; do for g in a; do ls $f; done; done',
+    "for f in 'a(b'; do ls \"$f\"; done",
+  ], 2);
+  allBash(RO, [
+    'ls ./*', 'rg x ./*', 'wc -l server/src/*.ts', 'grep -rn x --include=*.ts .', "find . -name '*.ts'",
+    'for f in server/src/*.ts; do wc -l "$f"; done', 'for f in a.ts b.ts; do wc -l $f; done', 'git log --format=[%h] -1',
+    'for f in src/*; do for g in a b; do echo "$f" $g; done; done',
+  ], 0);
+});
+
+test('test runners may not write reports, profiles or coverage, load other config or reconfigure npm', () => {
+  allBash(['test-writer', 'verifier'], [
+    'pnpm exec vitest run --outputFile=src/x.ts', 'pnpm exec vitest run --reporter=json --outputFile.json=x',
+    'pnpm test --coverage.enabled --coverage.reportsDirectory=src', 'pnpm test --coverage', 'pnpm exec vitest run --config=x.ts',
+    'pnpm exec vitest run -c x.ts', 'pnpm exec vitest run --root ../x', 'npx vitest run --globalSetup=x.ts', 'pnpm test --reporter=html',
+    'pnpm test --reporter html', 'pnpm test -- --dir server/clones/x', 'pnpm exec tsc --noEmit --generateCpuProfile src/x.ts',
+    'pnpm exec tsc --noEmit --GENERATETRACE x', 'pnpm exec tsc --noEmit false --outDir x', 'pnpm exec tsc --noEmit --incremental',
+    'pnpm typecheck --noEmit false', 'npm test --script-shell=./x', 'npm run typecheck --prefix x', 'npm test --silent',
+    'npm test -- --outputFile=x', 'npx tsc --noEmit -b',
+  ], 2);
+  allBash(['test-writer', 'verifier'], [
+    'pnpm test -- test/a.test.ts', "pnpm exec vitest run test/a.test.ts -t 'updates user' --reporter=verbose",
+    'npm test -- --reporter=dot', 'npm test -- test/a.test.ts', 'pnpm exec tsc --noEmit -p tsconfig.test.json --pretty',
+    'pnpm exec vitest run --no-coverage', 'npx vitest run --project unit', 'npm run typecheck',
+  ], 0);
+});
+
+test('cd and git -C may not enter server/clones/ (untrusted imported repos)', () => {
+  allBash(RO, [
+    'cd server/clones/x && git status', 'cd server && cd clones/x && ls', 'git -C server/clones/x status', 'cd server/clo* && ls',
+    'cd "server/clones" && ls', 'cd server/x/../clones && ls', 'for d in server/clones/x; do cd $d; done', 'for d in server/*; do cd "$d"; done',
+  ], 2);
+  allBash(['test-writer', 'verifier'], ['cd server/clones/x && pnpm test'], 2);
+  allBash(RO, [
+    "rg -n x --glob '!server/clones/**' .", 'cd server && git status', 'grep -rn x --exclude-dir=clones .', 'git -C server log -1',
+    'for d in server client; do cd $d; done',
+  ], 0);
+});
+
+test('comments after a redirect operator, unbounded commands and catastrophic backtracking are refused fast', () => {
+  allBash(RO, ['cat a <#x', 'ls >#x', 'ls ' + 'a '.repeat(20_000)], 2);
+  const t = Date.now();
+  assert.equal(bash('readonly', 'echo ' + '$'.repeat(20_000)), 2);
+  assert.equal(bash('readonly', 'sed -n 1p' + ' a'.repeat(15_000) + ' ;'), 0);
+  assert.ok(Date.now() - t < 5000, 'linear-time checks');
+});
+
+test('writers may not create file names that turn into flags, nor write through a symlink', () => {
+  for (const p of ['server/test/x . -delete', 'server/test/a --pre=sh', 'server/test/a\tb.test.ts', 'server/test/a\nb.ts', 'server/test/-x.ts']) {
+    assert.equal(write('test-writer', p), 2, JSON.stringify(p));
+  }
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'link-guard-')));
+  for (const d of ['server/test', 'server/src']) mkdirSync(join(repo, d), { recursive: true });
+  writeFileSync(join(repo, 'server/src/a.ts'), '');
+  symlinkSync(join(repo, 'server/src'), join(repo, 'server/test/src-link'));
+  symlinkSync(join(repo, 'server/src/a.ts'), join(repo, 'server/test/a.test.ts'));
+  symlinkSync(join(repo, 'server/src/new.ts'), join(repo, 'server/test/dangling.test.ts'));
+  const w = (p) => run('test-writer', 'Write', { file_path: join(repo, p), content: 'x' }, repo).code;
+  assert.equal(w('server/test/src-link/b.ts'), 2, 'symlinked folder');
+  assert.equal(w('server/test/a.test.ts'), 2, 'symlinked file');
+  assert.equal(w('server/test/dangling.test.ts'), 2, 'dangling symlink');
+  assert.equal(w('server/test/real.test.ts'), 0, 'a plain new test');
+});
+
+test('every agent that can run Bash or write files has a PreToolUse guard', () => {
+  const agents = join(dirname(guard), '../agents');
+  for (const f of readdirSync(agents).filter((n) => n.endsWith('.md') && n !== 'README.md')) {
+    const front = readFileSync(join(agents, f), 'utf8').split(/^---$/m)[1] ?? '';
+    const tools = (front.match(/^tools:(.*)$/m)?.[1] ?? '*').split(',').map((t) => t.trim());
+    const risky = tools.some((t) => ['*', 'Bash', 'Edit', 'Write', 'NotebookEdit'].includes(t));
+    const guarded = /PreToolUse:[\s\S]*?\.claude\/hooks\/(?:agent|implementer)-guard\.mjs/.test(front);
+    assert.ok(!risky || guarded, `${f}: tools ${tools.join(', ')} without a PreToolUse guard`);
+  }
 });
 
 test('sed -n takes line-number, $ and /regex/ addresses followed only by p', () => {
@@ -258,7 +441,21 @@ test('workflow-retro Bash: only the collector by absolute path and stdin filters
     `jq . ${out}`, 'jq . ~/.claude.json', 'head -n 5 .env', 'tail ~/.claude/projects/x/s.jsonl', 'grep -r token .',
     'cat docs/retro/ledger/runs.md', 'git log --oneline -5', 'ls', `${collect} --session "a;b"`,
     'git commit -m x', 'sed -i s/a/b/ docs/retro/ledger/runs.md', `tee ${out}`, 'rm docs/retro/ledger/runs.md',
+    // jq that reads the environment, a file or a module
+    `${collect} --list | jq -n 'env'`, `${collect} --list | jq '$ENV.OPENAI_API_KEY'`, `${collect} --list | jq -r 'env | keys'`,
+    `${collect} --list | jq -n "\\"\${OPENAI_API_KEY}\\""`, `${collect} --list | jq "$HOME"`, "jq -f '/etc/passwd'",
+    "jq -L '/tmp' 'import \"x\" as x; x::f'", `${collect} --list | jq 'include "x"; .'`, "jq -rf '/etc/passwd'",
   ]) assert.equal(bash(c), 2, c);
+  for (const c of [`${collect} --list | jq -r '.sessions | length'`, `${collect} --list | jq -c '.sessions[] | {id, environment: .env_x}'`]) {
+    assert.equal(bash(c), 0, c);
+  }
+  // jq ≤ 1.6 parses `$ ENV` as `$ENV`.
+  for (const c of [`${collect} --list | jq -n '$ ENV'`, `${collect} --list | jq -n '$  ENV.KEY'`]) assert.equal(bash(c), 2, c);
+  // Flag values may not start with `-`: `--x --x …` used to parse in 2^n ways (38 flags ≈ 14 s, past the hook timeout).
+  const t = Date.now();
+  assert.equal(bash(`${collect}${' --x'.repeat(60)} !`), 2, 'many flags, failing match');
+  assert.equal(bash(`${collect}${' --x'.repeat(60)}`), 0, 'many flags');
+  assert.ok(Date.now() - t < 5000, `collector regex is linear (${Date.now() - t} ms)`);
 });
 
 test('workflow-retro reads only the ledger, its skill folder and the collector JSON', () => {

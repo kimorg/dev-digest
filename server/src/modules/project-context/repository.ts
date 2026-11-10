@@ -96,16 +96,25 @@ export class ProjectContextRepository implements ProjectContextStore {
     agentId: string,
     paths: string[],
   ): Promise<ContextPathEntry[] | undefined> {
-    if (!(await this.agentInWorkspace(workspaceId, agentId))) return undefined;
-    await this.db.transaction(async (tx) => {
+    // Delete-then-insert: lock the agent row first, so concurrent PUTs of one list run one after another
+    // instead of both deleting and then colliding on (agent_id, path). NO KEY UPDATE is enough for that and,
+    // unlike FOR UPDATE, does not block FK checks of inserts into the agent's other child tables.
+    const found = await this.db.transaction(async (tx) => {
+      const [agent] = await tx
+        .select({ id: t.agents.id })
+        .from(t.agents)
+        .where(and(eq(t.agents.id, agentId), eq(t.agents.workspaceId, workspaceId)))
+        .for('no key update');
+      if (!agent) return false;
       await tx.delete(t.agentContextDocs).where(eq(t.agentContextDocs.agentId, agentId));
       if (paths.length > 0) {
         await tx
           .insert(t.agentContextDocs)
           .values(paths.map((path, order) => ({ agentId, path, order })));
       }
+      return true;
     });
-    return paths.map((path, order) => ({ path, order }));
+    return found ? paths.map((path, order) => ({ path, order })) : undefined;
   }
 
   async getSkillPaths(workspaceId: string, skillId: string): Promise<ContextPathEntry[] | undefined> {
@@ -123,16 +132,23 @@ export class ProjectContextRepository implements ProjectContextStore {
     skillId: string,
     paths: string[],
   ): Promise<ContextPathEntry[] | undefined> {
-    if (!(await this.skillInWorkspace(workspaceId, skillId))) return undefined;
-    await this.db.transaction(async (tx) => {
+    // Same lock as setAgentPaths, on the skill row.
+    const found = await this.db.transaction(async (tx) => {
+      const [skill] = await tx
+        .select({ id: t.skills.id })
+        .from(t.skills)
+        .where(and(eq(t.skills.id, skillId), eq(t.skills.workspaceId, workspaceId)))
+        .for('no key update');
+      if (!skill) return false;
       await tx.delete(t.skillContextDocs).where(eq(t.skillContextDocs.skillId, skillId));
       if (paths.length > 0) {
         await tx
           .insert(t.skillContextDocs)
           .values(paths.map((path, order) => ({ skillId, path, order })));
       }
+      return true;
     });
-    return paths.map((path, order) => ({ path, order }));
+    return found ? paths.map((path, order) => ({ path, order })) : undefined;
   }
 
   async listEnabledSkillContextForAgent(agentId: string): Promise<SkillContextEntry[]> {

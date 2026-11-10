@@ -69,25 +69,38 @@ function refreshDocumentCounts(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: queryKeys.contextFiles() });
 }
 
-/** Optimistic write of one attachment list into `key`; `onError` only rolls back (the global toast reports it). */
+/**
+ * Optimistic write of one attachment list into `key`; `onError` only rolls back (the global toast reports it).
+ * Every save sends the full list, so quick toggles overlap: `scope` sends them one at a time, in order, and
+ * only the newest save writes its result or rolls back — an older one would put a stale list in the cache.
+ */
 function useSetContextPaths<T extends { paths: ContextPathsResult["paths"] }>(
   key: QueryKey,
   url: string,
   onSettled: (qc: QueryClient) => void,
 ) {
   const qc = useQueryClient();
+  // The running save counts itself until its callbacks finish.
+  const isNewest = () => qc.isMutating({ mutationKey: key, exact: true }) === 1;
+  const withPaths = (paths: ContextPathsResult["paths"]) => (old: T | undefined) => (old ? { ...old, paths } : old);
   return useMutation({
+    mutationKey: key,
+    scope: { id: JSON.stringify(key) },
     mutationFn: (paths: string[]) => api.put<ContextPathsResult>(url, { paths } satisfies SetContextPathsRequest),
     onMutate: async (paths) => {
       await qc.cancelQueries({ queryKey: key });
       const previous = qc.getQueryData<T>(key);
-      qc.setQueryData<T>(key, { ...(previous ?? {}), paths: toEntries(paths) } as T);
+      qc.setQueryData<T>(key, withPaths(toEntries(paths)));
       return { previous };
     },
-    onError: (_e, _paths, ctx) => qc.setQueryData(key, ctx?.previous),
+    onError: (_e, _paths, ctx) => {
+      if (!isNewest()) return;
+      qc.setQueryData(key, ctx?.previous);
+      // `previous` may hold an earlier save that failed too — re-read the stored list.
+      void qc.invalidateQueries({ queryKey: key });
+    },
     onSuccess: (result) => {
-      const current = qc.getQueryData<T>(key);
-      qc.setQueryData<T>(key, { ...(current ?? {}), paths: result.paths } as T);
+      if (isNewest()) qc.setQueryData<T>(key, withPaths(result.paths));
     },
     onSettled: () => onSettled(qc),
   });
