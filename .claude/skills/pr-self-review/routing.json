@@ -6,15 +6,22 @@
     "**/pnpm-lock.yaml",
     "**/package-lock.json",
     "**/*.md",
-    ".claude/**",
+    ".claude/skills/*/references/**",
+    ".claude/skills/*/evals/**",
+    ".claude/skills/*/tile.json",
+    ".claude/skills/typescript-expert/scripts/**",
+    ".claude/worktrees/**",
+    ".claude/*.local.json",
+    ".claude/*.lock",
     ".cursor/**",
-    ".githooks/**",
     "client/src/vendor/ui/**"
   ],
   "ignoreSkills": [
     "mermaid-diagram",
+    "ears-requirements",
     "engineering-insights",
-    "pr-self-review"
+    "pr-self-review",
+    "run-plan"
   ],
   "skills": [
     {
@@ -142,10 +149,15 @@
         "client/next.config.*",
         "**/.env*",
         "scripts/**",
-        ".github/workflows/**"
+        ".github/workflows/**",
+        ".claude/hooks/**",
+        ".claude/skills/*/scripts/**",
+        ".claude/settings.json",
+        ".githooks/**"
       ],
       "exclude": [
-        "**/*.test.ts"
+        "**/*.test.ts",
+        "**/*.test.mjs"
       ],
       "severityMap": {
         "HIGH": "CRITICAL",

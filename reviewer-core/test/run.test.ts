@@ -182,3 +182,41 @@ describe('reviewPullRequest (engine)', () => {
     });
   });
 });
+
+describe('reviewPullRequest — project context specs (AC-48)', () => {
+  const clean = { verdict: 'approve', summary: 'ok', score: 100, findings: [] };
+  const twoFileDiff =
+    'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,1 +1,2 @@\n x\n+a\n' +
+    'diff --git a/src/b.ts b/src/b.ts\n--- a/src/b.ts\n+++ b/src/b.ts\n@@ -1,1 +1,2 @@\n y\n+b\n';
+  const specs = [{ path: 'server/AGENTS.md', content: 'PROJECT RULES' }];
+
+  function userMessages(llm: MockLLMProvider): string[] {
+    return llm.calls
+      .filter((c) => c.method === 'completeStructured')
+      .map((c) => (c.req as { messages: { role: string; content: string }[] }).messages[1]!.content);
+  }
+  const section = (u: string) => u.slice(u.indexOf('## Project context'), u.indexOf('## Diff to review'));
+
+  it('map-reduce: every per-file call carries the identical Project context section', async () => {
+    const llm = new MockLLMProvider('openai', { structured: clean });
+    const diff = await new MockGitClient({ diff: twoFileDiff }).diff();
+    const outcome = await reviewPullRequest({
+      systemPrompt: 's', model: 'm', diff, llm, specs, strategy: 'map-reduce',
+    });
+    expect(outcome.mode).toBe('map-reduce');
+    const users = userMessages(llm);
+    expect(users.length).toBeGreaterThanOrEqual(2);
+    expect(section(users[0]!)).toContain('<untrusted source="spec:server/AGENTS.md">');
+    for (const u of users) expect(section(u)).toBe(section(users[0]!));
+  });
+
+  it('single-pass: section present with specs, absent without', async () => {
+    const diff = await new MockGitClient().diff();
+    const withLlm = new MockLLMProvider('openai', { structured: clean });
+    await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm: withLlm, specs });
+    expect(userMessages(withLlm)[0]).toContain('spec:server/AGENTS.md');
+    const withoutLlm = new MockLLMProvider('openai', { structured: clean });
+    await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm: withoutLlm });
+    expect(userMessages(withoutLlm)[0]).not.toContain('## Project context');
+  });
+});

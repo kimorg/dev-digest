@@ -5,7 +5,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Button, Icon } from "@devdigest/ui";
-import { DiffViewer, type DiffAnnotationApi, type DiffCommentApi } from "@/components/diff-viewer";
+import { DiffViewer, type DiffAnnotationApi, type DiffCommentApi, type DiffFocus } from "@/components/diff-viewer";
 import { UNSTYLED_BUTTON } from "@/lib/unstyled-button";
 import type { PrFile, SmartDiffRole } from "@devdigest/shared";
 import { ROLE_META } from "../../constants";
@@ -20,15 +20,19 @@ interface RoleGroupProps {
   flaggedCount: number;
   commenting: DiffCommentApi;
   annotations: DiffAnnotationApi;
+  /** File to expand, scroll to and highlight (only honoured when it is in this group). */
+  focus?: DiffFocus | null;
+  onFocusClear?: () => void;
 }
 
-export function RoleGroup({ role, files, flaggedCount, commenting, annotations }: RoleGroupProps) {
+export function RoleGroup({ role, files, flaggedCount, commenting, annotations, focus, onFocusClear }: RoleGroupProps) {
   const t = useTranslations("prReview");
   const meta = ROLE_META[role];
   const label = t(`smartDiff.${meta.labelKey}`);
   const isEmpty = files.length === 0;
-  const [groupOpen, setGroupOpen] = React.useState(() => groupDefaultOpen(role, files));
-  const { api, allOpen, setAll } = useGroupFileOpen(files);
+  const hasFocus = !!focus && files.some((f) => f.path === focus.path);
+  const [groupOpen, setGroupOpen] = React.useState(() => hasFocus || groupDefaultOpen(role, files));
+  const { api, allOpen, setAll } = useGroupFileOpen(files, focus?.path);
   const isFullyOpen = groupOpen && allOpen;
 
   const toggleAll = () => {
@@ -76,7 +80,11 @@ export function RoleGroup({ role, files, flaggedCount, commenting, annotations }
       </div>
       {groupOpen && !isEmpty && (
         <div style={s.body}>
-          <DiffViewer files={files} commenting={commenting} annotations={annotations} fileOpen={api} />
+          <DiffViewer files={files} commenting={commenting} annotations={annotations}
+            fileOpen={api}
+            focus={focus}
+            onFocusClear={onFocusClear}
+          />
         </div>
       )}
     </div>

@@ -55,3 +55,4 @@ Manual testing (optional): MCP Inspector web UI via `../scripts/mcp-inspector.sh
 ## Read before you work
 
 - Past learnings → [INSIGHTS.md](INSIGHTS.md) · test strategy → [../TESTING.md](../TESTING.md)
+- Feature spec for the task → [specs/](specs/README.md) (cross-package: [../specs/](../specs/README.md))

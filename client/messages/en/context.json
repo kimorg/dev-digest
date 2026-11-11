@@ -1,24 +1,66 @@
 {
   "title": "Project Context",
-  "chunks": "{count} chunks",
-  "reindex": "Re-index",
-  "indexing": "Indexing…",
-  "resync": "Resync",
-  "resyncing": "Resyncing…",
-  "indexStatus": "Index status: {status}",
-  "loadError": "Couldn’t load specs",
-  "kb": "{kb}kb",
+  "page": {
+    "crumbContext": "Project Context",
+    "rescan": "Rescan",
+    "rescanHint": "Rescan reads the local clone. Resync updates the clone from GitHub.",
+    "loadError": "Couldn’t load the project context",
+    "truncated": "Only the first documents are listed — the repository has more than the scan limit.",
+    "footer": "{count, plural, one {# document} other {# documents}} · {tokens, number} tokens total · refreshed {when}",
+    "footerNever": "{count, plural, one {# document} other {# documents}} · {tokens, number} tokens total",
+    "listLabel": "Documents"
+  },
+  "noClone": {
+    "title": "Repository is not cloned yet",
+    "body": "Clone the repository first, then come back to scan its documents."
+  },
   "empty": {
-    "title": "No spec files yet",
-    "body": "Drop your PRDs, tech specs, and acceptance criteria under .devdigest/specs/. Every agent and the PR brief read them as grounding context."
+    "title": "No documents found",
+    "body": "The scan lists markdown files that match these patterns:",
+    "patterns": [
+      "<package>/INSIGHTS.md",
+      "<package>/docs/**/*.md",
+      "<package>/specs/**/*.md and specs/**/*.md",
+      "docs/plans/**/*.md",
+      "<package>/*.md (README.md, AGENTS.md, …)"
+    ]
   },
-  "mode": {
-    "preview": "preview",
-    "edit": "edit"
+  "type": {
+    "docs": "docs",
+    "specs": "specs",
+    "insights": "insights",
+    "plans": "plans",
+    "readme": "readme"
   },
-  "editor": {
-    "loadError": "Couldn’t load spec",
-    "save": "Save",
-    "saving": "Saving…"
+  "doc": {
+    "tokens": "{count, number}t",
+    "tooLarge": "too large",
+    "select": "Select a document to preview it.",
+    "usedBy": "Used by {agents, plural, one {# agent} other {# agents}} · {skills, plural, one {# skill} other {# skills}}",
+    "download": "Download",
+    "loadError": "Couldn’t load this document",
+    "gone": "The file no longer exists — run Rescan",
+    "tooLargeBody": "This file is larger than 400 KB and is not shown or attachable.",
+    "empty": "This file is empty."
+  },
+  "picker": {
+    "section": "Project context to use",
+    "subtitle": "Order matters — earlier docs appear earlier in the assembled <code>## Project context</code> block. Toggle to attach.",
+    "counts": "{attached} of {total} attached · ~{tokens, number} tokens",
+    "largeWarning": "Large context: ~{tokens, number} tokens in every prompt",
+    "filterPlaceholder": "Filter documents…",
+    "noMatch": "No documents match the filter",
+    "filterDragHint": "Clear the filter to reorder.",
+    "preview": "Preview",
+    "missing": "missing",
+    "missingTitle": "This path does not exist in the active repository — detach it or rescan.",
+    "dragHandle": "Reorder {path}",
+    "tooLargeTitle": "Larger than 400 KB — can’t be attached",
+    "loadError": "Couldn’t load the project context",
+    "noRepo": "Select a repository to choose project context.",
+    "closePreview": "Close preview",
+    "previewTitle": "Preview of {path}",
+    "ownerAgent": "agent",
+    "ownerSkill": "skill"
   }
 }

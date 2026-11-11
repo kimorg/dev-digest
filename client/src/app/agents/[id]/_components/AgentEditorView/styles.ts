@@ -27,5 +27,5 @@ export const s = {
   editorIcon: { color: "var(--accent)" } satisfies CSSProperties,
   editorTitle: { fontSize: 18, fontWeight: 700 } satisfies CSSProperties,
   editorActions: { marginLeft: "auto" } satisfies CSSProperties,
-  editorBody: { flex: 1, minHeight: 0, overflow: "auto" } satisfies CSSProperties,
+  editorBody: { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } satisfies CSSProperties,
 } as const;

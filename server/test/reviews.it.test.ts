@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { waitForPrRuns, waitForRunTrace } from './helpers/runs.js';
 import { buildApp } from '../src/app.js';
@@ -527,5 +530,221 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     // seed has 2 enabled agents; we may have created more above in this PR's ws.
     expect(body.runs.length).toBeGreaterThanOrEqual(2);
     await app.close();
+  });
+
+  // ------------------------------------------------------------------
+  // SPEC-005 project context in the review run (AC-38…AC-49, EC-3, EC-4, EC-19, EC-20)
+  // ------------------------------------------------------------------
+  describe('project context in a run', () => {
+    const cloneDirs: string[] = [];
+    afterAll(async () => {
+      for (const dir of cloneDirs) await rm(dir, { recursive: true, force: true });
+    });
+
+    interface SkillSpec {
+      paths: string[];
+      enabled?: boolean;
+      linked?: boolean;
+    }
+    interface Scenario {
+      /** `null` = the repo has no clone. */
+      files: Record<string, string> | null;
+      agentPaths?: string[];
+      /** In link order. */
+      skills?: SkillSpec[];
+    }
+
+    let seq = 0;
+    async function runScenario(sc: Scenario) {
+      const llm = new MockLLMProvider('openai', { structured: REVIEW_FIXTURE });
+      const app = await buildApp({
+        config: config(),
+        db: pg.handle.db,
+        overrides: { embedder: new MockEmbedder(), git: new MockGitClient({ diff: DIFF }), llm: { openai: llm } },
+      });
+      const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+      if (sc.files) {
+        const dir = await mkdtemp(join(tmpdir(), 'dd-ctx-run-'));
+        cloneDirs.push(dir);
+        for (const [p, c] of Object.entries(sc.files)) {
+          await mkdir(dirname(join(dir, p)), { recursive: true });
+          await writeFile(join(dir, p), c);
+        }
+        await pg.handle.db.update(t.repos).set({ clonePath: dir }).where(eq(t.repos.id, repo.id));
+      }
+      const agent = (
+        await app.inject({
+          method: 'POST',
+          url: '/agents',
+          payload: { name: `CtxRun ${seq++}`, provider: 'openai', model: 'gpt-4.1', system_prompt: 'sys' },
+        })
+      ).json();
+      const put = (kind: string, id: string, paths: string[]) =>
+        app.inject({ method: 'PUT', url: `/${kind}/${id}/context`, payload: { paths } });
+      if (sc.agentPaths) expect((await put('agents', agent.id, sc.agentPaths)).statusCode).toBe(200);
+
+      const skillIds: string[] = [];
+      const linkIds: string[] = [];
+      for (const s of sc.skills ?? []) {
+        const skill = (
+          await app.inject({
+            method: 'POST',
+            url: '/skills',
+            payload: { name: `CtxRunSkill ${seq++}`, description: 'd', type: 'custom', body: 'b' },
+          })
+        ).json();
+        skillIds.push(skill.id);
+        expect((await put('skills', skill.id, s.paths)).statusCode).toBe(200);
+        if (s.enabled === false) {
+          await app.inject({ method: 'PUT', url: `/skills/${skill.id}`, payload: { enabled: false } });
+        }
+        if (s.linked !== false) linkIds.push(skill.id);
+      }
+      if (linkIds.length > 0) {
+        await app.inject({ method: 'POST', url: `/agents/${agent.id}/skills`, payload: { skill_ids: linkIds } });
+      }
+
+      const res = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
+      expect(res.statusCode).toBe(200);
+      const runId = res.json().runs[0].run_id;
+      const runs = await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+      expect(runs[0]!.status).toBe('done');
+      const trace = await waitForRunTrace(app, runId);
+      const docs = sc.files
+        ? ((await app.inject({ method: 'GET', url: `/repos/${repo.id}/context` })).json().documents as {
+            path: string;
+            tokens: number;
+          }[])
+        : [];
+      await app.close();
+      const logs = (trace.log as { msg: string }[]).map((l) => l.msg);
+      return { trace, logs, llm, skillIds, docs, agentId: agent.id as string };
+    }
+
+    const specLogs = (logs: string[]) => logs.filter((m) => m.startsWith('Specs:'));
+    const reviewCalls = (llm: MockLLMProvider) =>
+      llm.calls.filter((c) => (c.req as { schemaName?: string }).schemaName === 'Review').length;
+
+    it('merges agent then skills, dedupes, wraps as untrusted and records specs_read / spec_refs / tokens (AC-38, 39, 43, 49, EC-4, EC-19, NFR-4)', async () => {
+      const files = {
+        'server/AGENTS.md': '# Agents\nUse pnpm everywhere.',
+        'server/docs/auth.md': '# Auth\nTokens expire in one hour.',
+        'server/docs/db.md': '# DB\nMigrations are generated.',
+      };
+      const { trace, logs, skillIds, docs } = await runScenario({
+        files,
+        agentPaths: ['server/AGENTS.md'],
+        skills: [
+          { paths: ['server/docs/auth.md', 'server/AGENTS.md'] }, // S1 repeats the agent's path
+          { paths: ['server/docs/db.md', 'server/docs/auth.md'] }, // S2 repeats S1's path
+        ],
+      });
+
+      expect(trace.specs_read).toEqual(['server/AGENTS.md', 'server/docs/auth.md', 'server/docs/db.md']);
+      const refs = trace.prompt_assembly.spec_refs as {
+        path: string;
+        source: string;
+        skill_id: string | null;
+        tokens: number;
+      }[];
+      expect(refs.map((r) => [r.path, r.source, r.skill_id])).toEqual([
+        ['server/AGENTS.md', 'agent', null],
+        ['server/docs/auth.md', 'skill', skillIds[0]],
+        ['server/docs/db.md', 'skill', skillIds[1]],
+      ]);
+
+      // prompt: untrusted wrappers in merged order, each doc once
+      const specs: string = trace.prompt_assembly.specs;
+      expect(trace.prompt_assembly.user).toContain('## Project context');
+      const at = (p: string) => specs.indexOf(`<untrusted source="spec:${p}">`);
+      expect(at('server/AGENTS.md')).toBeGreaterThanOrEqual(0);
+      expect(at('server/AGENTS.md')).toBeLessThan(at('server/docs/auth.md'));
+      expect(at('server/docs/auth.md')).toBeLessThan(at('server/docs/db.md'));
+      expect(specs.split('Tokens expire in one hour.')).toHaveLength(2);
+
+      // tokens: total, log line, and equality with the Context list (NFR-4)
+      const total = refs.reduce((s, r) => s + r.tokens, 0);
+      expect(trace.prompt_assembly.tokens.specs).toBeGreaterThan(0);
+      expect(specLogs(logs)).toEqual([`Specs: 3 context doc(s) attached to prompt (~${total} tokens)`]);
+      for (const r of refs) expect(r.tokens).toBe(docs.find((x) => x.path === r.path)!.tokens);
+    });
+
+    it('skips a missing, an oversize and an empty file with a log line each and still finishes (AC-44, AC-45, EC-1, EC-14)', async () => {
+      const { trace, logs } = await runScenario({
+        files: {
+          'server/docs/ok.md': '# ok\nfine',
+          'server/docs/big.md': 'x'.repeat(401 * 1024),
+          'server/docs/empty.md': '',
+        },
+        agentPaths: [
+          'server/docs/ok.md',
+          'server/docs/renamed.md',
+          'server/docs/big.md',
+          'server/docs/empty.md',
+        ],
+      });
+      expect(specLogs(logs)).toEqual(
+        expect.arrayContaining([
+          'Specs: skipped server/docs/renamed.md — not found in repo clone',
+          'Specs: skipped server/docs/big.md — too large',
+          'Specs: skipped server/docs/empty.md — empty',
+        ]),
+      );
+      expect(trace.specs_read).toEqual(['server/docs/ok.md']);
+    });
+
+    it('no clone + an attachment logs the single "repo not cloned" line; no attachments logs no Specs line (AC-46)', async () => {
+      const withAttachment = await runScenario({ files: null, agentPaths: ['server/AGENTS.md', 'specs/a.md'] });
+      expect(specLogs(withAttachment.logs)).toEqual(['Specs: repo not cloned — context skipped']);
+      expect(withAttachment.trace.specs_read).toEqual([]);
+
+      const none = await runScenario({ files: null });
+      expect(specLogs(none.logs)).toEqual([]);
+    });
+
+    it('no attachments → no Project context section, specs null, specs_read [], spec_refs null (AC-47)', async () => {
+      const { trace } = await runScenario({ files: { 'server/AGENTS.md': '# a' } });
+      expect(trace.prompt_assembly.specs ?? null).toBeNull();
+      expect(trace.prompt_assembly.user).not.toContain('## Project context');
+      expect(trace.prompt_assembly.tokens.specs ?? null).toBeNull();
+      expect(trace.specs_read).toEqual([]);
+      expect(trace.prompt_assembly.spec_refs ?? null).toBeNull();
+    });
+
+    it('docs of a disabled skill and of an unlinked skill are not read (EC-3)', async () => {
+      const { trace } = await runScenario({
+        files: {
+          'server/docs/live.md': '# live',
+          'server/docs/disabled.md': '# disabled',
+          'server/docs/unlinked.md': '# unlinked',
+        },
+        skills: [
+          { paths: ['server/docs/live.md'] },
+          { paths: ['server/docs/disabled.md'], enabled: false },
+          { paths: ['server/docs/unlinked.md'], linked: false },
+        ],
+      });
+      expect(trace.specs_read).toEqual(['server/docs/live.md']);
+    });
+
+    it('project context adds no LLM calls (AC-42)', async () => {
+      const without = await runScenario({ files: { 'server/AGENTS.md': '# a' } });
+      const withCtx = await runScenario({
+        files: { 'server/AGENTS.md': '# a', 'server/docs/x.md': '# x' },
+        agentPaths: ['server/AGENTS.md', 'server/docs/x.md'],
+      });
+      expect(withCtx.trace.specs_read).toHaveLength(2);
+      expect(reviewCalls(withCtx.llm)).toBe(reviewCalls(without.llm));
+      expect(withCtx.llm.calls.length).toBe(without.llm.calls.length);
+    });
+
+    it('EC-20: a skill’s deleted doc is skipped with a log line and only the present doc is read (AC-44)', async () => {
+      const { trace, logs } = await runScenario({
+        files: { 'server/docs/security.md': '# Security\nNo secrets in code.' },
+        skills: [{ paths: ['server/docs/security.md', 'server/docs/old-auth.md'] }],
+      });
+      expect(specLogs(logs)).toContain('Specs: skipped server/docs/old-auth.md — not found in repo clone');
+      expect(trace.specs_read).toEqual(['server/docs/security.md']);
+    });
   });
 });

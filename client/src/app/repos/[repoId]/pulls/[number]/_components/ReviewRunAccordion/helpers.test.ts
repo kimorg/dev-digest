@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { countOpenCriticals } from "./helpers";
+import { countOpenCriticals } from "../../helpers";
 
 describe("countOpenCriticals", () => {
   it("counts only critical findings that haven't been dismissed", () => {

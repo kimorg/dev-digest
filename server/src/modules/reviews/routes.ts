@@ -25,6 +25,7 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
   const service = new ReviewService(container, {
     intents: container.prIntent,
     countTokens: (text) => container.tokenizer.count(text),
+    projectContext: container.projectContext,
   });
 
   // ---- Run a review (manual trigger) -------------------------------

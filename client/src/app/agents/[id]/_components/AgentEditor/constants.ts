@@ -7,8 +7,9 @@ export interface EditorTab {
   icon: IconName;
 }
 
-/** Editor tabs: exactly Config and Skills (client/specs/003-skills.md). */
+/** Editor tabs: Config, Skills, Context (client/specs/003-skills.md, specs/005-project-context.md). */
 export const TABS: readonly EditorTab[] = [
   { key: "config", labelKey: "editor.tabs.config", icon: "Settings" },
   { key: "skills", labelKey: "editor.tabs.skills", icon: "Sparkles" },
+  { key: "context", labelKey: "editor.tabs.context", icon: "FileText" },
 ];

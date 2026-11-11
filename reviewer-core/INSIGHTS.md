@@ -69,12 +69,27 @@ or `diff-parser.ts` — run `cd reviewer-core && npm run typecheck` too.
 
 _An error that keeps coming back — quote its text — and the fix._
 
+### 2026-11-11 — OpenRouter 402 "You requested up to 65536 tokens, but can only afford N" = no `max_tokens`, even with BYOK
+**Context:** conventions Re-scan failed on every run with `402 This request requires more credits, or fewer max_tokens.
+You requested up to 65536 tokens, but can only afford 12927 … adjust the key's total limit`, although the workspace has an
+Anthropic BYOK key and the OpenRouter key had $99 of its limit left. · **Insight:** `OpenRouterProvider.completeStructured`
+sends `max_tokens` only when the caller passes `maxTokens`, and no server caller does (conventions, intent, brief). OpenRouter
+then pre-estimates the request at a fixed 65536 completion tokens against the account **credit balance**
+(`error.metadata.limit_source: "openrouter_credits"`, `provider_name: null` — rejected before routing), so the "key's total
+limit" wording is misleading. BYOK does not skip this check while the BYOK key keeps the default "Use shared capacity" fallback
+and the model has other endpoints (Vertex, Bedrock, Azure). Reproduced with two direct calls: the same request with
+`max_tokens: 16` went through the BYOK key (`usage.is_byok: true`, `cost: 0`). Fix = send a `max_tokens` (default in the
+provider or per caller). · **Evidence:** `reviewer-core/src/llm/openrouter.ts:73`, `server/src/modules/conventions/wiring.ts:33`,
+OpenRouter docs `api-reference/limits` ("In-flight spending budget") · **Apply when:** any OpenRouter 402 mentioning
+`max_tokens`/"can only afford", or BYOK requests failing on credits.
+
 ## Session Notes
 
 _One dated line per session that added entries: `- YYYY-MM-DD — task: titles added`._
 
 - 2026-10-18 — conventions prompt reuses the guard: `INJECTION_GUARD` is now exported (read-only) for non-review prompts
 - 2026-10-27 — plan 001 typecheck of tests: `npm run typecheck` now covers `reviewer-core/test/**`, the test typecheck compiles `server/src/adapters/mocks.ts` and `git/diff-parser.ts`
+- 2026-11-11 — OpenRouter 402 on conventions Re-scan with BYOK: OpenRouter 402 "You requested up to 65536 tokens, but can only afford N" = no `max_tokens`, even with BYOK
 
 ## Open Questions
 

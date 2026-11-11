@@ -91,6 +91,27 @@ demo or manual acceptance; the seed is only good for checking the degraded state
 `server/src/db/seed.ts:93` · **Apply when:** verifying any repo-intel-backed feature (blast radius, context) by hand
 or in e2e.
 
+### 2026-11-05 — `constants.ts` importing a type from `helpers.ts` is a new `domain-is-pure` violation, even with `import type`
+**Context:** two `/run-plan` runs of one plan (enabled skill count on agent cards, throwaway worktrees) typed
+`NO_SKILL_COUNTS` in `modules/agents/constants.ts` with a shape declared in `modules/agents/helpers.ts`. ·
+**Insight:** dependency-cruiser puts `constants.ts` in the domain ring and `helpers.ts` outside it; a type-only import
+still creates the edge, so both runs got the same CRITICAL from the deterministic checks (`run-plan.mjs checks` →
+pr-self-review's `runDepcruise`). Typing the constant inline passes but duplicates the shape; the clean fix is the
+shape in the module's `types.ts`, imported by constants, helpers and repository. · **Evidence:**
+`.claude/skills/onion-architecture/SKILL.md:56` (ring 1 = `domain.ts`, `constants.ts`, `types.ts`),
+`.claude/skills/pr-self-review/scripts/checks.mjs:57` · **Apply when:** a plan puts a shape in `helpers.ts` that a
+constant in `constants.ts` needs.
+
+### 2026-11-06 — delete-then-insert of a child list in a transaction still races: concurrent PUTs fail with 23505 → 500
+**Context:** self-review finding on `PUT /agents/:id/context`. · **Insight:** under READ COMMITTED two
+transactions both `DELETE` the old rows, and the second `INSERT` then collides on the `(agent_id, path)`
+primary key. Six parallel `app.inject` PUTs gave three 500s. Fix: inside the transaction, first
+`select … from agents where id and workspace_id … .for('no key update')` (enough to serialise writers per parent, and unlike FOR UPDATE it does not block FK checks of inserts into the parent's other child tables). It
+moves the workspace check into the same transaction. · **Evidence:**
+`server/src/modules/project-context/repository.ts` (`setAgentPaths`, `setSkillPaths`),
+`server/test/project-context.it.test.ts` ("concurrent PUTs of one list …") · **Apply when:** a repository
+replaces a whole child list (agent skills, context docs, any join table) by delete + insert.
+
 ## Codebase Patterns
 
 _Conventions and architectural decisions (with the reason) that the code doesn't explain._
@@ -248,6 +269,36 @@ progress signal. · **Evidence:** `server/src/modules/repo-intel/service.ts:192-
 `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BlastRadiusCard/helpers.ts:51` ·
 **Apply when:** polling index-state to know when an index or resync job completed.
 
+### 2026-11-06 — a clone doc read has three outcomes besides ok: `missing` (404), `too_large`, and `unsafe` (422)
+**Context:** plan 006 S5/S7, reading project-context docs from a repo clone. · **Insight:** the plan said
+"symlink → missing", but the spec wants a symlinked or outside-the-clone `?path=` to answer 422
+`invalid_context_path`, while a vanished file answers 404 `context_doc_not_found`. Folding symlinks into
+`missing` makes those two indistinguishable, so `CloneDocSource.read` returns a separate `unsafe` status; the
+file endpoint maps it to 422, and the scan and the review run treat it like `missing` (skip). · **Evidence:**
+`server/src/modules/project-context/infrastructure/clone-doc-source.ts:56,63,66`,
+`server/src/modules/project-context/service.ts:69,147,212` · **Apply when:** adding another reader of clone files
+whose API must tell "not there" from "not allowed".
+
+### 2026-11-10 — "latest run per agent" now lives once per vendored copy: `pickLatestPerAgent` in `@devdigest/shared`
+**Context:** plan 008 (PR brief) R2. · **Insight:** Supersedes: "\"latest run per agent\" = latest `reviews` row per
+`(pr_id, agent_id)`; the rule is duplicated in the client". The grouping rule (first item per agent from a newest-first
+list; null/undefined agent = one group) moved to `vendor/shared/rules/latest-per-agent.ts`, byte-identical in
+`server/src/vendor/shared` and `client/src/vendor/shared` — the first non-contract file in the shared kernel. Server
+callers: `pulls/routes.ts` (PR-list loop), `smart-diff/domain.ts:20`, `brief/domain.ts`; client: `src/lib/latest-review.ts`.
+Change the rule in both vendored copies, not in a caller. · **Evidence:** `server/src/vendor/shared/rules/latest-per-agent.ts`,
+`server/test/latest-per-agent.test.ts` · **Apply when:** changing which run per agent counts anywhere.
+
+### 2026-11-10 — `parseFileRef` (`file_refs` grammar) is hand-copied in server and client and already drifted once
+**Context:** plan 008 /run-plan, architecture finding A1. · **Insight:** the brief's `file_refs` grammar (`path`,
+`path:N`, `path:N-M`) is parsed by two copies: server `brief/domain.ts` (grounding: a ref is kept only when
+`parseFileRef(ref).path` is an allowed path) and client `OverviewTab/helpers.ts` (links). The server copy first used
+`/^(.*):(\d+)$/`, so `src/a.ts:12-18` became the whole path and grounding silently dropped valid range refs — and a
+risk whose refs were all ranges. The copies are now identical (trim, same regex, `m?.[1] || trimmed` fallback, line ≥ 1
+else null; `":12"` → line 12, accepted by the user). Moving it to `vendor/shared/rules/file-ref.ts` is an accepted open
+item. Until then, change both bodies together. · **Evidence:** `server/src/modules/brief/domain.ts:85-95`,
+`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/helpers.ts:3-12`, `server/test/brief-domain.test.ts` ·
+**Apply when:** touching brief grounding, the `file_refs` format or the Overview brief links.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -346,9 +397,37 @@ steps run in the main thread with the user's OK. · **Evidence:** `server/src/db
 `server/src/db/migrations/meta/_journal.json` · **Apply when:** changing a schema whose generated migration
 is uncommitted but already migrated locally.
 
+### 2026-11-06 — drizzle-orm 0.38.4 `check()` works and `db:generate` emits the CHECK constraints
+**Context:** plan 006 S3, the first table-level CHECKs in the schema. · **Insight:** `check(name, sql\`…\`)` from
+`drizzle-orm/pg-core` in the table's extra-config callback is supported in 0.38.4; `pnpm db:generate` writes
+`CONSTRAINT "<name>" CHECK (…)` into `CREATE TABLE`, so no hand-written SQL is needed for enum-like text columns or
+`>= 0` guards. · **Evidence:** `server/src/db/schema/context.ts:150-155`,
+`server/src/db/migrations/0016_add_project_context.sql:6,17-18` · **Apply when:** a column needs a DB-level value
+constraint.
+
+### 2026-11-06 — `@fastify/rate-limit` rejects with a plain `statusCode: 429` object, which the error handler turned into `internal_error`
+**Context:** plan 006 S7, per-route rescan limit with the spec's `rate_limited` code. · **Insight:** the plugin's
+error is not an `AppError`, so the shared handler fell through to its generic 500/`internal_error` branch; it
+needs an explicit `statusCode === 429` branch that sends `{ error: { code: 'rate_limited' } }`. Rate limiting is off
+under `NODE_ENV=test`, so a test of it must build the app with `nodeEnv: 'development'` (it lane only). ·
+**Evidence:** `server/src/app.ts:164-167`; T-22 in `server/test/project-context.it.test.ts` · **Apply when:** adding
+`config.rateLimit` to a route or any plugin that throws non-`AppError` errors.
+
+### 2026-11-10 — `MockLLMProvider` throws a plain `Error` when its fixture fails the schema — that is the "invalid model output" test seam
+**Context:** plan 008 T-5, AC-13 (bad model output → 502, no row stored). · **Insight:** `completeStructured` in the
+mock validates the fixture against the requested schema and throws `new Error('MockLLMProvider fixture failed schema…')`.
+A service that wraps model failures (the brief service throws `ExternalServiceError`) turns it into 502
+`external_service_error`, so an integration test gets "invalid model output" just by passing a fixture that
+fails the schema; no custom provider is needed. · **Evidence:** `server/src/adapters/mocks.ts:95`,
+`server/src/modules/brief/service.ts:80`, `server/test/brief.it.test.ts` · **Apply when:** testing a model-output
+validation failure path.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
+
+### 2026-11-11 — OpenRouter 402 "can only afford N" on conventions / intent / brief calls
+See `reviewer-core/INSIGHTS.md` → "OpenRouter 402 "You requested up to 65536 tokens, but can only afford N" = no `max_tokens`, even with BYOK".
 
 ## Session Notes
 
@@ -372,7 +451,21 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-10-28 — plan 002 Revision 3 (drop risk areas): regenerating an uncommitted migration that is already applied locally needs a manual local rollback, run from the main thread
 - 2026-10-28 — plan 003 Smart Diff: PR file lists stop at 100: `getPullRequest` calls `pulls.listFiles` once with `per_page: 100`, types shared by `domain.ts` and `ports.ts` go in the module's `types.ts`
 - 2026-11-03 — plan 005 Blast Radius: the seeded PR #482 can never show a real blast radius: the seed repo has no clone, blast radius is a 1-hop read: `BFS_DEPTH` drives only `getCriticalPaths`, `POST /repos/:id/resync` answers 202 even when no job was enqueued, `GET /repos/:id/index-state` without a row returns a placeholder: `lastIndexedSha: ''`, epoch `updatedAt`
+- 2026-11-05 — /run-plan e2e runs (enabled skill count, throwaway worktrees): `constants.ts` importing a type from `helpers.ts` is a new `domain-is-pure` violation, even with `import type`
+- 2026-11-06 — plan 006 Project Context (/run-plan): a clone doc read has three outcomes besides ok, drizzle-orm 0.38.4 `check()` works, `@fastify/rate-limit` rejects with a plain 429 object, trace `tokens.specs` counts the wrapped slot (open question)
+- 2026-11-06 — self-review fixes (context paths): delete-then-insert of a child list in a transaction still races: concurrent PUTs fail with 23505 → 500
+- 2026-11-10 — plan 008 PR brief (/run-plan, resumed): "latest run per agent" now lives once per vendored copy, `parseFileRef` is hand-copied in server and client and already drifted once, `MockLLMProvider` throws a plain `Error` when its fixture fails the schema
+- 2026-11-11 — OpenRouter 402 on conventions Re-scan with BYOK: pointer "OpenRouter 402 "can only afford N" on conventions / intent / brief calls"
 
 ## Open Questions
 
 _Still unresolved — what is known, what isn't, where to look next._
+
+### 2026-11-06 — trace `tokens.specs` counts the wrapped Project context slot, not the sum of the docs' tokens
+**Context:** plan 006 T-23, comparing trace tokens with the Context tab. · **Insight:** `countPromptTokens` counts
+`assembly.specs`, i.e. the whole `<untrusted source="spec:…">` blocks joined, so it is larger than the sum of
+`spec_refs[].tokens` (74 vs 25 in one fixture). Each `spec_refs[].tokens` does equal the Context list count
+(NFR-4). Unresolved: AC-49 says `tokens.specs` is "the total" without saying which; the test asserts only `> 0`.
+Ask the spec owner before asserting equality. · **Evidence:** `server/src/modules/reviews/helpers.ts:124`,
+`server/src/modules/reviews/run-executor.ts:303` · **Apply when:** showing or testing `tokens.specs` next to
+document token counts.

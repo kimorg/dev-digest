@@ -82,3 +82,40 @@ describe("FileCard — controlled expansion", () => {
     expect(screen.queryByText("const c = 4;")).not.toBeInTheDocument();
   });
 });
+
+describe("FileCard — focus target", () => {
+  const BIG: PrFile = { ...FILE, additions: 150, deletions: 60 };
+
+  function stubScroll() {
+    const fn = vi.fn();
+    Element.prototype.scrollIntoView = fn;
+    return fn;
+  }
+
+  it("a collapsed-by-size target opens, is marked, highlights its line and scrolls to it (AC-53..AC-55, EC-13)", () => {
+    const scroll = stubScroll();
+    renderCard(<FileCard file={BIG} focus={{ path: BIG.path, line: 3 }} />);
+    expect(screen.getByTestId("diff-file-focused")).toBeInTheDocument();
+    const target = screen.getByTestId("diff-line-target");
+    expect(target).toHaveTextContent("const c = 4;");
+    expect(scroll).toHaveBeenCalled();
+    expect(scroll.mock.contexts[0]).toBe(target);
+    expect(screen.queryByText(/outside the diff hunks/)).not.toBeInTheDocument();
+  });
+
+  it("a line outside the hunks shows the notice and scrolls to the card top (AC-56)", () => {
+    const scroll = stubScroll();
+    renderCard(<FileCard file={FILE} focus={{ path: FILE.path, line: 99 }} />);
+    expect(screen.getByText("Line 99 is outside the diff hunks.")).toBeInTheDocument();
+    expect(screen.queryByTestId("diff-line-target")).not.toBeInTheDocument();
+    expect(scroll.mock.contexts[0]).toBe(screen.getByTestId("diff-file-focused"));
+  });
+
+  it("without focus there is no marker, no target line and no scroll", () => {
+    const scroll = stubScroll();
+    renderCard(<FileCard file={FILE} />);
+    expect(screen.queryByTestId("diff-file-focused")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("diff-line-target")).not.toBeInTheDocument();
+    expect(scroll).not.toHaveBeenCalled();
+  });
+});

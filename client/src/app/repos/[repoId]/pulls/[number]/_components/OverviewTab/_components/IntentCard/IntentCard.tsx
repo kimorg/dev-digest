@@ -12,17 +12,19 @@ import { s } from "./styles";
 interface IntentCardProps {
   prId: string | null | undefined;
   repoId: string;
+  /** Extra block rendered last, after a horizontal rule (the brief's Risk areas). */
+  children?: React.ReactNode;
 }
 
 /** Overview "Intent" card. Reads the stored intent only — it never starts a detection on mount. */
-export function IntentCard({ prId, repoId }: IntentCardProps) {
+export function IntentCard({ prId, repoId, children }: IntentCardProps) {
   const t = useTranslations("brief.intent");
   const { data, isLoading, error, refetch } = usePrIntent(prId);
   const recalc = useRecalculatePrIntent(prId, repoId);
 
   if (isLoading) {
     return (
-      <section style={s.card} aria-busy="true">
+      <section style={s.card} aria-label={t("title")} aria-busy="true">
         <Skeleton width="40%" />
         <Skeleton height={44} />
         <Skeleton height={60} />
@@ -33,7 +35,7 @@ export function IntentCard({ prId, repoId }: IntentCardProps) {
   // Cached data stays on screen when a background refetch fails (isError alone isn't enough).
   if (data == null) {
     return (
-      <section style={s.card}>
+      <section style={s.card} aria-label={t("title")}>
         <ErrorState
           title={t("errorTitle")}
           body={`${error instanceof ApiError ? error.message : ""} ${t("modelHint")}`.trim()}
@@ -46,12 +48,9 @@ export function IntentCard({ prId, repoId }: IntentCardProps) {
   const unchanged = recalc.data?.regenerated === false && !data.stale;
 
   return (
-    <section style={s.card}>
+    <section style={s.card} aria-label={t("title")}>
+      {/* The "Intent" label sits above the card (OverviewTab); the header keeps only the actions. */}
       <div style={s.header}>
-        <span style={s.title}>
-          <Icon.Target size={14} />
-          {t("title")}
-        </span>
         <div style={s.headerRight}>
           {data.stale && (
             <Badge color="var(--warn)" bg="var(--warn-bg)" icon="AlertTriangle">
@@ -77,6 +76,13 @@ export function IntentCard({ prId, repoId }: IntentCardProps) {
       )}
 
       {data.intent ? <IntentBody record={data.intent} /> : <div style={s.muted}>{t("empty")}</div>}
+
+      {children && (
+        <>
+          <hr style={s.rule} />
+          {children}
+        </>
+      )}
     </section>
   );
 }

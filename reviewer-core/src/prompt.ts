@@ -59,6 +59,12 @@ export function renderIntent(intent: Intent): string {
 /** Cap the PR description so a huge author body can't blow the token budget. */
 const MAX_PR_DESCRIPTION_CHARS = 4000;
 
+/** A repo markdown doc attached as project context. */
+export interface ProjectContextDoc {
+  path: string;
+  content: string;
+}
+
 export interface PromptParts {
   /** Agent's system prompt (trusted). */
   system: string;
@@ -66,8 +72,8 @@ export interface PromptParts {
   skills?: string[];
   /** Relevant memory items (trusted, curated). */
   memory?: string[];
-  /** Project-context spec chunks (untrusted content). */
-  specs?: string[];
+  /** Project-context docs (untrusted content), labelled `spec:<path>`. */
+  specs?: ProjectContextDoc[];
   /**
    * Repo skeleton / map (T3): top-ranked symbols by signature, token-budgeted.
    * Untrusted (derived from repo code) — delimiter-wrapped. Rendered before
@@ -122,7 +128,7 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
       : undefined;
   const specsBlock =
     parts.specs && parts.specs.length > 0
-      ? parts.specs.map((s, i) => wrapUntrusted(`spec-${i}`, s)).join('\n\n')
+      ? parts.specs.map((d) => wrapUntrusted(`spec:${d.path}`, d.content)).join('\n\n')
       : undefined;
 
   const prDescription =

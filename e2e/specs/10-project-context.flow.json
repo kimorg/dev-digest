@@ -1,0 +1,12 @@
+{
+  "name": "Project Context page tells the user the seeded repository is not cloned yet",
+  "description": "Opens the seeded repo's pulls page, clicks Project Context in the sidebar (/repos/:repoId/context) and confirms the no-clone state, since the seed repo has no local clone.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app home" },
+    { "cmd": ["wait", "--url", "/repos/"], "label": "home redirects to the seeded repo" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "repo fetch settles" },
+    { "cmd": ["find", "text", "Project Context", "click"], "label": "click project context in the sidebar" },
+    { "cmd": ["wait", "--url", "/context"], "label": "project context route reached" },
+    { "cmd": ["wait", "--text", "Repository is not cloned yet"], "label": "no-clone state is shown for the seeded repo" }
+  ]
+}

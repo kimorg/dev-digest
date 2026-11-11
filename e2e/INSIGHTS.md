@@ -77,6 +77,22 @@ so the Test Quality Reviewer shows "3 of 7 enabled"; `client/specs/003-skills.md
 
 _Quirks of dependencies, tools, CLIs and the environment._
 
+### 2026-11-05 — agents can't run e2e flows: the guard allows only `npm test` / `npm run test|typecheck`
+**Context:** `/run-plan` (throwaway worktrees), test-writer wrote an e2e T row into `specs/03-agents.flow.json`. ·
+**Insight:** the `test-writer` and `verifier` profiles of agent-guard refuse `npm run e2e:hermetic`,
+`agent-browser …` and `which agent-browser`; and without the global `agent-browser` on PATH, `npm test` can't run a
+flow either. A flow written inside a run is only typechecked (`npm run typecheck`) — its step commands stay
+unverified, so the user runs `cd e2e && npm run e2e:hermetic` before commit. · **Evidence:**
+`.claude/hooks/agent-guard.mjs` (`RUNNERS`), `e2e/package.json:7-11` · **Apply when:** a plan has an e2e test row
+or a run report says an e2e flow is `NOT RUN`.
+
+### 2026-11-05 — the npm `install-scripts` warning for esbuild's postinstall is harmless
+**Context:** `npm ci` in `e2e/` on a fresh worktree. · **Insight:** npm prints
+`npm warn install-scripts esbuild@… (postinstall: node install.js)` and skips the script, but `tsx` still runs and
+`npm run typecheck` passes — no `npm install-scripts approve` is needed. · **Evidence:** `e2e/package.json:12-16`
+(`tsx`, `typescript`, `@types/node` only) · **Apply when:** an e2e (or mcp / reviewer-core) install prints
+install-scripts warnings.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -110,6 +126,7 @@ issue (one run per fresh API). Wait a minute between local runs or restart the A
 _One dated line per session that added entries: `- YYYY-MM-DD — task: titles added`._
 
 - 2026-10-28 — fix PR #7 e2e (flows 08/09): reproduce CI e2e failures on a prod build with a stderr-logging wrapper, flow 09 count is linked of ALL workspace skills, "No element found" on find…click, "Could not load skills" / "No repo selected" on repeated local runs = API 429
+- 2026-11-05 — /run-plan e2e runs (enabled skill count, throwaway worktrees): agents can't run e2e flows: the guard allows only `npm test` / `npm run test|typecheck`, the npm `install-scripts` warning for esbuild's postinstall is harmless
 
 ## Open Questions
 

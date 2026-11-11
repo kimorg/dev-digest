@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { RunTrace } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/runs.json"; // apps/web/messages/en/runs.json
@@ -26,8 +26,10 @@ const TRACE: RunTrace = {
   ],
 };
 
+// Tests of project context swap the trace; reset to TRACE after each test.
+let current: RunTrace = TRACE;
 vi.mock("@/lib/hooks/trace", () => ({
-  useRunTrace: () => ({ data: TRACE, isLoading: false }),
+  useRunTrace: () => ({ data: current, isLoading: false }),
 }));
 vi.mock("@/lib/hooks/reviews", () => ({
   useRunEvents: () => ({ events: [], running: false }),
@@ -35,7 +37,10 @@ vi.mock("@/lib/hooks/reviews", () => ({
 
 import RunTraceDrawer from "./RunTraceDrawer";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  current = TRACE;
+});
 
 function renderWithIntl(ui: React.ReactElement) {
   return render(
@@ -76,5 +81,75 @@ describe("Prompt assembly", () => {
     expect(screen.getByText("# Over-Mocking")).toBeInTheDocument();
     expect(screen.queryByText(/Description: Flag over-mocked tests/)).not.toBeInTheDocument();
     expect(screen.queryByText(/<skill name=/)).not.toBeInTheDocument();
+  });
+});
+
+const wrap = (label: string, content: string) => `<untrusted source="${label}">\n${content}\n</untrusted>`;
+const DOC_A = "# Server rules\nunique-line-alpha";
+const DOC_B = "# Auth notes\nunique-line-beta";
+const SPECS = [wrap("spec:server/AGENTS.md", DOC_A), wrap("spec:server/docs/auth.md", DOC_B)].join("\n\n");
+
+function withSpecs(extra: Partial<RunTrace["prompt_assembly"]>, specsRead: string[]): RunTrace {
+  return {
+    ...TRACE,
+    specs_read: specsRead,
+    prompt_assembly: {
+      ...TRACE.prompt_assembly,
+      specs: SPECS,
+      tokens: { ...TRACE.prompt_assembly.tokens!, specs: 321 },
+      ...extra,
+    },
+  };
+}
+
+describe("Project context in the trace (AC-50…AC-53)", () => {
+  it("'Specs read' lists the paths in order (AC-53)", () => {
+    current = withSpecs({}, ["server/AGENTS.md", "server/docs/auth.md"]);
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} onClose={() => {}} />);
+    const read = screen.getAllByText(/^server\/(AGENTS|docs\/auth)\.md$/).map((e) => e.textContent);
+    expect(read).toEqual(["server/AGENTS.md", "server/docs/auth.md"]);
+  });
+
+  it("the block shows its tokens and the attached-specs list; opening one shows its full text (AC-50, AC-51)", () => {
+    current = withSpecs(
+      {
+        spec_refs: [
+          { path: "server/AGENTS.md", type: "readme", tokens: 120, source: "agent", skill_id: null },
+          { path: "server/docs/auth.md", type: "docs", tokens: 201, source: "skill", skill_id: "s1" },
+        ],
+      },
+      ["server/AGENTS.md", "server/docs/auth.md"],
+    );
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} onClose={() => {}} />);
+    fireEvent.click(screen.getByText("Prompt assembly"));
+    expect(screen.getAllByTestId("prompt-block-tokens").map((e) => e.textContent)).toContain("~321 tok");
+
+    fireEvent.click(screen.getByText("Project context (dynamic)"));
+    const list = screen.getByRole("list", { name: "Project context attached specs" });
+    const items = within(list).getAllByRole("button");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("server/AGENTS.md");
+    expect(items[0]).toHaveTextContent("readme");
+    expect(items[0]).toHaveTextContent("~120 tok");
+    expect(items[1]).toHaveTextContent("server/docs/auth.md");
+    expect(items[1]).toHaveTextContent("~201 tok");
+
+    fireEvent.click(items[1]!);
+    // the drawer is itself a dialog; the document modal is the last one opened
+    const dialog = screen.getAllByRole("dialog").at(-1)!;
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(within(dialog).getByText("server/docs/auth.md")).toBeInTheDocument();
+    expect(within(dialog).getByText(/# Auth notes\s+unique-line-beta/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/unique-line-alpha/)).not.toBeInTheDocument();
+  });
+
+  it("an older trace without spec_refs shows the block without the list and without an error (AC-52)", () => {
+    current = withSpecs({ spec_refs: undefined }, ["server/AGENTS.md"]);
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} onClose={() => {}} />);
+    fireEvent.click(screen.getByText("Prompt assembly"));
+    fireEvent.click(screen.getByText("Project context (dynamic)"));
+    expect(screen.queryByRole("list", { name: "Project context attached specs" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText(/unique-line-alpha/)).toBeInTheDocument();
   });
 });

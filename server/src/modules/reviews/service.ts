@@ -6,6 +6,7 @@ import { ReviewRepository } from './repository.js';
 import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import type { PrIntents } from '../intent/types.js';
+import type { ProjectContext } from '../project-context/types.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
 
@@ -33,11 +34,22 @@ export class ReviewService {
 
   constructor(
     private container: Container,
-    deps: { intents: PrIntents; countTokens: (text: string) => number },
+    deps: {
+      intents: PrIntents;
+      countTokens: (text: string) => number;
+      projectContext: ProjectContext;
+    },
   ) {
     this.repo = new ReviewRepository(container.db);
     this.agents = container.agentsRepo;
-    this.executor = new ReviewRunExecutor(container, this.repo, this.agents, deps.intents, deps.countTokens);
+    this.executor = new ReviewRunExecutor(
+      container,
+      this.repo,
+      this.agents,
+      deps.intents,
+      deps.countTokens,
+      deps.projectContext,
+    );
   }
 
   // ===========================================================================

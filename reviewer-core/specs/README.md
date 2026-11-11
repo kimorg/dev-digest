@@ -1,13 +1,20 @@
 # reviewer-core — specs
 
 One spec per engine change or course lesson, written **before** implementation and kept
-as the source of truth while the work is in progress. Engine features are usually driven
-by the server — link the server spec when one exists.
+as the source of truth while the work is in progress. An engine change driven by a server
+feature changes two packages, so its spec goes in the root [`specs/`](../../specs/README.md) folder.
 
-- File name: `NNN-short-name.md` (e.g. `001-skills-slot.md`)
-- Status: `draft` → `active` → `done` (keep done specs — they explain why code looks the way it does)
+This folder holds specs of features that change **only** this package. They are written by the
+[`spec-creator`](../../.claude/agents/spec-creator.md) agent after you approve them, and
+[`implementation-planner`](../../.claude/agents/implementation-planner.md) plans from them.
 
-## Template
+- File name: `NNN-<slug>.md`. `NNN` is one sequence across every spec folder.
+- `Spec ID: SPEC-NNN` · Status: `draft` → `approved` → `implemented`
+- The file is in English, has EARS acceptance criteria and no implementation details.
+- Template and rules: [`specs/README.md`](../../specs/README.md).
+- The older template below is for reference only. New specs use the template in `specs/README.md`.
+
+## Legacy template (reference)
 
 ```md
 # NNN — <feature>

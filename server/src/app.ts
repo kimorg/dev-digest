@@ -81,6 +81,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     const reaped = await new ReviewService(container, {
       intents: container.prIntent,
       countTokens: (text) => container.tokenizer.count(text),
+      projectContext: container.projectContext,
     }).reapStaleRuns();
     if (reaped > 0) app.log.info({ reaped }, 'reaped stale running agent_runs on boot');
   } catch (err) {
@@ -159,8 +160,15 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       });
       return;
     }
-    app.log.error(err);
     const e = err as { statusCode?: number; message?: string };
+    // @fastify/rate-limit throws a plain object with statusCode 429.
+    if (e.statusCode === 429) {
+      reply.status(429).send({
+        error: { code: 'rate_limited', message: e.message ?? 'Too many requests' },
+      });
+      return;
+    }
+    app.log.error(err);
     reply.status(e.statusCode ?? 500).send({
       error: { code: 'internal_error', message: e.message ?? 'Internal error' },
     });

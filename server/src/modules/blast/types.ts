@@ -1,4 +1,4 @@
-import type { BlastDegradedReason } from '@devdigest/shared';
+import type { BlastDegradedReason, BlastRadius } from '@devdigest/shared';
 
 /**
  * Structural mirror of repo-intel's `BlastResult` (modules may not import each other's
@@ -21,3 +21,11 @@ export interface BlastTarget {
 
 /** Where the map came from — logged by the route. */
 export type BlastSource = 'index' | 'fallback';
+
+/**
+ * Facade other modules (brief) use to read a PR's blast radius. Resolved as
+ * `container.prBlast`. Read-only: no model, no GitHub.
+ */
+export interface PrBlastRadius {
+  get(workspaceId: string, prId: string): Promise<{ blast: BlastRadius; source: BlastSource }>;
+}

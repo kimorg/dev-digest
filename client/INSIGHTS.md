@@ -61,6 +61,17 @@ Event('input', { bubbles: true }))`. Assigning `ta.value` alone gets reverted by
 `client/src/app/repos/[repoId]/conventions/_components/ConventionsView/ConventionsView.test.tsx` · **Apply when:**
 testing a page-level view, or typing into a React input from a headless-Chrome script.
 
+### 2026-11-06 — screenshot a dnd-kit drag mid-way with CDP mouse events, then cancel with Escape (no save)
+**Context:** checking the context picker's drag visuals against the agent Skills tab. · **Insight:**
+for a *visual* check the keyboard flow (Space/ArrowDown/Space) is not needed and it saves on drop. Instead,
+send `Input.dispatchMouseEvent` `mousePressed` on the grip, then about 10 `mouseMoved` steps with `buttons: 1`
+past the `PointerSensor` 4 px activation distance, then take a screenshot and read the sortable wrappers' inline
+`transform`/`zIndex`. A `keyDown` Escape cancels the drag, so the order and the dev DB stay unchanged.
+Seeded data: only skill `8fda343c…` ("Breaking Change") has ≥ 2 attached docs; the agents have ≤ 1. ·
+**Evidence:** `client/src/components/context-docs-picker/SortableContextDocRow.tsx`,
+`client/src/components/context-docs-picker/ContextDocsPicker.tsx` · **Apply when:** verifying how any dnd-kit
+list looks during a drag.
+
 ## What Doesn't Work
 
 _Dead ends and anti-patterns — what was tried and why it failed. The most skipped section, and the most valuable._
@@ -216,6 +227,44 @@ until the last agent finished. The refresh now follows the 4 s `usePrActiveRuns`
 `…/PrDetailView/PrDetailView.tsx:51`, `…/RunStatus/RunStatus.tsx:30` · **Apply when:** anything on the PR
 page must react to a review run finishing.
 
+### 2026-11-06 — optimistic full-list saves need `scope` + "only the newest save writes the cache"
+**Context:** self-review finding on `useSetContextPaths`. · **Insight:** each toggle PUTs the whole list, so
+quick toggles overlap. The old response's `onSuccess` overwrote the newer optimistic list, and the next toggle
+was then built from that stale list. The PUTs could also reach the server out of order. TanStack v5
+`scope: { id }` runs `onMutate` at once but sends the requests one at a time, in order. In `onSuccess` /
+`onError`, write or roll back only when `qc.isMutating({ mutationKey, exact: true }) === 1` (the running save
+counts itself). A hook test with hand-resolved PUTs shows it. `useSetAgentSkills`
+(`client/src/lib/hooks/agents.ts:108`) still has the old pattern. · **Evidence:**
+`client/src/lib/hooks/context.ts` (`useSetContextPaths`), `client/src/lib/hooks/context.test.tsx` ·
+**Apply when:** writing any optimistic mutation that sends the full list.
+
+### 2026-11-10 — "latest run per agent" now lives once per vendored copy: `pickLatestPerAgent` in `@devdigest/shared`
+See `server/INSIGHTS.md` → "\"latest run per agent\" now lives once per vendored copy: `pickLatestPerAgent` in `@devdigest/shared`".
+
+### 2026-11-10 — `parseFileRef` (`file_refs` grammar) is hand-copied in server and client and already drifted once
+See `server/INSIGHTS.md` → "`parseFileRef` (`file_refs` grammar) is hand-copied in server and client and already drifted once".
+
+### 2026-11-10 — DiffTab's remount key lives in state: clearing `?file`/`?line` must not change it
+**Context:** plan 008 S10, focus a file/line from the Overview brief. · **Insight:** groups and file cards are
+remounted when the focus target changes so they re-open at it. The key is kept in `useState` and only moves to a
+new target; it keeps the last target after `clearFocus`. Deriving the key from the URL would remount (and
+re-collapse) every group whenever the focus params are dropped. The `focus` object is new each render, so
+`FileCard`'s scroll effect depends on its primitives (path, line), not on the object. · **Evidence:**
+`client/src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/DiffTab.tsx:63-66`,
+`client/src/components/diff-viewer/FileCard/FileCard.tsx` · **Apply when:** changing diff focus, the remount key or
+the `?file`/`?line` URL state.
+
+### 2026-11-11 — PR tabs render into a flex column with `gap: 24`: wrap a `SectionLabel` with its block
+**Context:** the "PR BRIEF" label sat 38 px above its card, while Intent / Blast radius / Description sat 14 px. ·
+**Insight:** `PrDetailView`'s tab body is `display: flex; flex-direction: column; gap: 24`, and `OverviewTab` returns a
+fragment, so every top-level node is its own flex item. A bare `SectionLabel` followed by its card gets `gap` added to the
+label's 14 px `marginBottom` (flex items' margins don't collapse). Put the label and its block in one wrapper
+(`<div>` / `<section>`), as Description does. Measured with CDP `getBoundingClientRect`. jsdom can't measure it, so the test
+checks that label and card are the only two children of one wrapper. · **Evidence:**
+`client/src/app/repos/[repoId]/pulls/[number]/_components/PrDetailView/styles.ts:15`,
+`…/OverviewTab/OverviewTab.tsx`, `…/OverviewTab/OverviewTab.test.tsx` ("labelled above their cards") ·
+**Apply when:** adding a labelled block or any top-level element to a PR detail tab, or spacing on a tab looks uneven.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -317,6 +366,65 @@ scroll on narrow viewports. · **Evidence:** `client/src/vendor/ui/kit/Modal.tsx
 `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BlastRadiusCard/_components/BlastGraphModal/graph-layout.ts`
 (`graphModalWidth`) · **Apply when:** putting fixed-width content (canvas, SVG, table) into a kit `Modal`.
 
+### 2026-11-06 — the kit `IconBtn` takes a closed prop set and never forwards a `ref`
+**Context:** plan 006 S12/S13, returning focus inside the preview panel and the spec-ref modal. · **Insight:**
+`IconBtn` destructures only `icon/label/size/active/onClick/danger` and renders its own `<button>`, so a `ref`
+passed to it (React 19 treats `ref` as a prop) is dropped and `ref.current` stays `null`. To focus inside a panel,
+put `tabIndex={-1}` and the ref on the panel container and focus that. · **Evidence:**
+`client/src/vendor/ui/primitives/IconBtn.tsx:4-18`, `client/src/components/context-docs-picker/ContextPreviewPanel.tsx:34` ·
+**Apply when:** managing focus around a kit `IconBtn` (including close buttons in panels).
+
+### 2026-11-06 — jsdom's `Blob` has no `.text()`: read a downloaded Blob with `FileReader`
+**Context:** plan 006 T-34, asserting the Download content passed to `URL.createObjectURL`. · **Insight:** in the
+vitest jsdom env `blob.text()` is not a function; wrap `FileReader.readAsText` in a promise instead. · **Evidence:**
+`client/src/app/repos/[repoId]/context/_components/ContextDocPreview/ContextDocPreview.test.tsx:61` · **Apply when:**
+testing any Blob/file download.
+
+### 2026-11-06 — a `messages/en/*.json` with an array fails typecheck as `NextIntlClientProvider` messages
+**Context:** plan 006 context tests (`context.json` has `empty.patterns: [...]`). · **Insight:** the inferred JSON
+type with an array is not assignable to `AbstractIntlMessages`, so `pnpm typecheck` fails in the test; cast it
+(`contextJson as unknown as AbstractIntlMessages`). · **Evidence:**
+`client/src/app/repos/[repoId]/context/_components/ProjectContextView/ProjectContextView.test.tsx:28` · **Apply when:**
+a message file gains an array and is passed to a test provider.
+
+### 2026-11-06 — `RunTraceDrawer` is itself `role=dialog`: pick a modal opened inside it with `getAllByRole("dialog").at(-1)`
+**Context:** plan 006 T-42, the spec-ref full-text modal inside the trace drawer. · **Insight:** `getByRole("dialog")`
+finds two dialogs and throws; the inner modal is the last one in document order. · **Evidence:**
+`client/src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/RunTraceDrawer.test.tsx:139` · **Apply when:**
+testing any `Modal` opened from the trace drawer.
+
+### 2026-11-06 — `ProjectContextView` renders its pane test ids while loading: wait for loaded content before querying inside them
+**Context:** plan 007 tests for the Project Context page. · **Insight:** `context-docs-pane` and
+`context-preview-pane` are rendered by the loading branch too (skeleton, `aria-busy="true"`), so
+`findByTestId` resolves before the data arrives and `within(pane)` queries fail. Two first-draft
+tests failed this way. Await a piece of loaded content (a row path) first. · **Evidence:**
+`client/src/app/repos/[repoId]/context/_components/ProjectContextView/ProjectContextView.tsx:59,68` (loading)
+vs `:97,106` (loaded) · **Apply when:** testing any state of the Project Context page.
+
+### 2026-11-06 — jsdom counts a `hidden` tooltip in the accessible description via `aria-describedby`
+**Context:** plan 007 T-4, the Rescan tooltip. · **Insight:** an element with `hidden` that
+`aria-describedby` points to still counts in jsdom's accessible-description computation, so
+`toHaveAccessibleDescription(text)` passes while the tooltip is closed. A visually-hidden style
+is not needed for the assertion. · **Evidence:**
+`client/src/app/repos/[repoId]/context/_components/ContextDocToolbar/ContextDocToolbar.tsx:50,53`,
+`ContextDocToolbar.test.tsx:69` · **Apply when:** asserting a hover/focus tooltip that toggles `hidden`.
+
+### 2026-11-10 — `noUncheckedIndexedAccess` is on: `fn.mock.calls[0][0]` in a test fails typecheck with TS2532
+**Context:** plan 008 T-13, `usePrDetailUrlState.test.ts`. · **Insight:** vitest passes but `pnpm typecheck` (which
+covers tests) fails with `error TS2532: Object is possibly 'undefined'` on `replace.mock.calls[0][0]`. Use
+`mock.calls[0]?.[0]` (e.g. `String(replace.mock.calls[0]?.[0])`) or `toHaveBeenCalledWith`. · **Evidence:**
+`client/tsconfig.json:8`, `client/src/app/repos/[repoId]/pulls/[number]/_components/PrDetailView/hooks/usePrDetailUrlState.test.ts:35` ·
+**Apply when:** reading mock call arguments or any array index in client tests.
+
+### 2026-11-11 — kit `FormField` labels aren't tied to their control: `getByLabelText` finds nothing
+**Context:** testing the provider `SelectInput` inside a `FormField` (Settings → Feature Models). · **Insight:** `FormField`
+renders `<label>` with no `htmlFor` and the control as a sibling, and `SelectInput` / `SearchableSelect` take no `id` or
+`aria-label`, so the control has no accessible name and `getByLabelText(…)` / `getByRole(…, { name })` fail. Render one row
+per test and use `getByRole("combobox")` for the native select; the `SearchableSelect` trigger is a plain `div` — click its
+shown text (current label or placeholder). · **Evidence:** `client/src/vendor/ui/kit/FormField.tsx:19`,
+`client/src/vendor/ui/kit/SelectInput.tsx:29`, `…/SettingsModels/_components/FeatureModelRow/FeatureModelRow.test.tsx` ·
+**Apply when:** querying a form control in a component test, or several selects render in one tree.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
@@ -346,6 +454,16 @@ mock by URL (`url.endsWith("/history") ? json(HISTORY) : json(body)`). · **Evid
 `client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BlastRadiusCard/BlastRadiusCard.test.tsx:45` ·
 **Apply when:** adding a data hook to a child of an already-tested component.
 
+### 2026-11-10 — Next build: "Module not found: Can't resolve './contracts/findings.js'" after a runtime import from `@devdigest/shared`
+**Context:** plan 008 R2 made `src/lib/latest-review.ts` import `pickLatestPerAgent` (a value) from the shared barrel. ·
+**Insight:** every other client import from `@devdigest/shared` is `import type`, which is erased, so webpack never
+bundled `src/vendor/shared/index.ts`. A value import makes it bundle the barrel, and its NodeNext-style `./contracts/*.js`
+specifiers don't resolve to `.ts` in Next (no `extensionAlias`). Vitest and `tsc` resolve them, so tests and typecheck
+stay green and only `next dev`/`next build` fail. Import runtime code by deep path from a file with no `.js`
+imports (`@devdigest/shared/rules/latest-per-agent`), or add `extensionAlias` to `next.config.mjs`. · **Evidence:**
+`client/src/lib/latest-review.ts:1-4`, `client/src/vendor/shared/index.ts:18`, `client/tsconfig.json:24-25` ·
+**Apply when:** importing anything other than types from `@devdigest/shared` in the client.
+
 ## Session Notes
 
 _One dated line per session that added entries: `- YYYY-MM-DD — task: titles added`._
@@ -372,7 +490,22 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-11-03 — plan 005 Blast Radius: the kit `Modal` does not close on Esc: the caller handles the key, a card test crashes after a sibling query is added: the fetch mock answers every URL with one body
 - 2026-11-03 — Overview width + wrapping caller paths + empty Prior PRs: in jsdom a `<wbr>` inside a link adds a space to its accessible name
 - 2026-11-03 — Blast graph modal: no scrollbar, file names only: a fixed-size canvas in the kit `Modal` gets a horizontal scrollbar unless the modal width is derived from it
+- 2026-11-06 — plan 006 Project Context (/run-plan): the kit `IconBtn` never forwards a `ref`, jsdom `Blob` has no `.text()`, a messages JSON with an array fails typecheck as `NextIntlClientProvider` messages, `RunTraceDrawer` is itself `role=dialog`
+- 2026-11-06 — plan 007 Project Context design (/run-plan): `ProjectContextView` renders its pane test ids while loading, jsdom counts a `hidden` tooltip in the accessible description
+- 2026-11-06 — context picker drag like the Skills tab: screenshot a dnd-kit drag mid-way with CDP mouse events, then cancel with Escape (no save)
+- 2026-11-06 — self-review fixes (context saves): optimistic full-list saves need `scope` + "only the newest save writes the cache"
+- 2026-11-10 — plan 008 PR brief (/run-plan, resumed): DiffTab's remount key lives in state, `noUncheckedIndexedAccess` is on: `mock.calls[0][0]` fails typecheck, pointers for `pickLatestPerAgent` and `parseFileRef`
+- 2026-11-10 — plan 008 build fix: Next build: "Module not found: Can't resolve './contracts/findings.js'" after a runtime import from `@devdigest/shared`
+- 2026-11-11 — Settings → Feature Models provider picker: kit `FormField` labels aren't tied to their control: `getByLabelText` finds nothing
+- 2026-11-11 — Overview labels outside cards + PR brief spacing: PR tabs render into a flex column with `gap: 24`: wrap a `SectionLabel` with its block
 
 ## Open Questions
 
 _Still unresolved — what is known, what isn't, where to look next._
+
+### 2026-11-06 — Rescan tooltip while rescanning: hover-only, because `Button loading` disables it
+**Context:** plan 007, EC-25. · **Insight (unverified in a browser):** `Button`'s `loading` prop
+disables the button, so it can't take focus during a rescan and the hint shows only on hover — if
+a browser even fires hover events on a disabled button. · **Evidence:**
+`client/src/app/repos/[repoId]/context/_components/ContextDocToolbar/ContextDocToolbar.tsx:48` ·
+**Next:** check with manual V-7 (CDP hover on the disabled button in Chrome).

@@ -173,6 +173,73 @@ describe("DiffTab — original order", () => {
   });
 });
 
+function renderFocused(focus: { path: string; line: number | null }, files: PrFile[] = FILES, smart?: SmartDiffResponse) {
+  const scroll = vi.fn();
+  Element.prototype.scrollIntoView = scroll;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u.endsWith("/smart-diff"))
+        return json(smart ?? smartDiff({ core: [USERS, CONFIG], docs: [README], boilerplate: [LOCK] }));
+      if (u.endsWith("/reviews")) return json([]);
+      return json([]);
+    }),
+  );
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <NextIntlClientProvider locale="en" messages={{ prReview, shell }}>
+        <DiffTab prId="p1" filesCount={files.length} files={files} focus={focus} />
+      </NextIntlClientProvider>
+    </QueryClientProvider>,
+  );
+  return scroll;
+}
+
+describe("DiffTab — focus from the URL", () => {
+  it("opens a file in the collapsed docs group, marks it and scrolls to the line (AC-53..AC-55, EC-13)", async () => {
+    const scroll = renderFocused({ path: "README.md", line: 2 });
+    expect(await screen.findByTestId("diff-file-focused")).toHaveTextContent("README.md");
+    expect(screen.getByRole("button", { name: /^Docs/ })).toHaveAttribute("aria-expanded", "true");
+    const target = screen.getByTestId("diff-line-target");
+    expect(target).toHaveTextContent("const b = 3;");
+    expect(scroll.mock.contexts.at(-1)).toBe(target);
+  });
+
+  it("opens a file over 200 changed lines (AC-53)", async () => {
+    const big: PrFile = { path: "src/big.ts", additions: 150, deletions: 60, patch: PATCH };
+    renderFocused({ path: "src/big.ts", line: 3 }, [big, USERS], smartDiff({ core: [big, USERS] }));
+    expect(await screen.findByTestId("diff-file-focused")).toHaveTextContent("src/big.ts");
+    expect(screen.getByTestId("diff-line-target")).toHaveTextContent("const c = 4;");
+  });
+
+  it("a line outside the hunks shows the notice (AC-56)", async () => {
+    renderFocused({ path: "README.md", line: 99 });
+    expect(await screen.findByText("Line 99 is outside the diff hunks.")).toBeInTheDocument();
+    expect(screen.queryByTestId("diff-line-target")).not.toBeInTheDocument();
+  });
+
+  it("a file that is not in the PR changes nothing: no marker, no scroll (AC-58, EC-15)", async () => {
+    const scroll = renderFocused({ path: "nope/foreign.ts", line: 2 });
+    await screen.findByRole("button", { name: /^Core/ });
+    expect(screen.queryByTestId("diff-file-focused")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("diff-line-target")).not.toBeInTheDocument();
+    expect(scroll).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /^Docs/ })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("works the same in original order (AC-59)", async () => {
+    const scroll = renderFocused({ path: "README.md", line: 2 });
+    await screen.findByRole("button", { name: /^Core/ });
+    fireEvent.click(screen.getByRole("button", { name: "Original order" }));
+    expect(screen.queryByRole("button", { name: /^Core/ })).not.toBeInTheDocument();
+    expect(await screen.findByTestId("diff-file-focused")).toHaveTextContent("README.md");
+    const target = screen.getByTestId("diff-line-target");
+    expect(scroll.mock.contexts.at(-1)).toBe(target);
+  });
+});
+
 describe("DiffTab — comments and findings visibility", () => {
   it("the Show/Hide button flips GitHub threads and findings together; findings are visible first", async () => {
     renderTab({

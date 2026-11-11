@@ -12,6 +12,8 @@
     { "cmd": ["wait", "--text", "Recalculate"], "label": "intent card renders on overview" },
     { "cmd": ["wait", "--text", "Add rate limiting to the public API so unauthenticated clients cannot abuse it."], "label": "seeded intent sentence is shown (no model call)" },
     { "cmd": ["wait", "--text", "Blast radius"], "label": "blast radius card renders on overview" },
-    { "cmd": ["wait", "--text", "Limited data"], "label": "seed repo is unindexed so the degraded badge shows" }
+    { "cmd": ["wait", "--text", "Limited data"], "label": "seed repo is unindexed so the degraded badge shows" },
+    { "cmd": ["wait", "--text", "Brief not available yet."], "label": "empty brief state shows in the banner slot" },
+    { "cmd": ["wait", "--text", "Generate brief"], "label": "generate brief button is offered (never clicked)" }
   ]
 }

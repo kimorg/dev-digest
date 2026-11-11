@@ -8,7 +8,7 @@ import type {
   PrReviewComment,
   FindingsCounts,
 } from '@devdigest/shared';
-import { PrCommentInput, PrMeta as PrMetaSchema } from '@devdigest/shared';
+import { PrCommentInput, PrMeta as PrMetaSchema, pickLatestPerAgent } from '@devdigest/shared';
 import { z } from 'zod';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
@@ -155,17 +155,13 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         .from(t.reviews)
         .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
         .orderBy(desc(t.reviews.createdAt));
-      // Rows are newest-first → first seen per PR (per PR + agent) is the latest review.
-      // Same rule as `latestReviewIdsPerAgent` (smart-diff/domain.ts) and the client's
-      // `lib/latest-review.ts`: change the three together.
-      const seenAgents = new Set<string>();
+      // Rows are newest-first → first seen per PR is the latest review. The per-agent rule is
+      // `pickLatestPerAgent` in `@devdigest/shared` (also used by smart-diff, brief and the client).
       for (const rv of reviewRows) {
         if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { id: rv.id, score: rv.score });
-        const agentKey = `${rv.prId}:${rv.agentId ?? ''}`;
-        if (!seenAgents.has(agentKey)) {
-          seenAgents.add(agentKey);
-          prByAgentLatestReview.set(rv.id, rv.prId);
-        }
+      }
+      for (const rv of pickLatestPerAgent(reviewRows, (r) => `${r.prId}:${r.agentId ?? ''}`)) {
+        prByAgentLatestReview.set(rv.id, rv.prId);
       }
     }
 

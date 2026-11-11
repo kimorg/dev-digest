@@ -37,6 +37,12 @@ export interface DiffFileOpenApi {
   onOpenChange: (path: string, open: boolean) => void;
 }
 
+/** A file (and optionally a new-file line) the viewer should expand, scroll to and highlight. */
+export interface DiffFocus {
+  path: string;
+  line: number | null;
+}
+
 /** Split annotations into those whose line is rendered in this patch (keyed) and the rest. */
 export function partitionAnnotations(
   items: DiffAnnotation[],

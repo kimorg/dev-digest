@@ -19,3 +19,7 @@ export type SkillVersionRow = typeof t.skillVersions.$inferSelect;
 export type ConventionRow = typeof t.conventions.$inferSelect;
 export type ConventionScanRow = typeof t.conventionScans.$inferSelect;
 export type PrIntentRow = typeof t.prIntent.$inferSelect;
+export type ContextDocumentRow = typeof t.contextDocuments.$inferSelect;
+export type ContextScanRow = typeof t.contextScans.$inferSelect;
+export type AgentContextDocRow = typeof t.agentContextDocs.$inferSelect;
+export type SkillContextDocRow = typeof t.skillContextDocs.$inferSelect;

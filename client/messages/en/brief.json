@@ -2,14 +2,36 @@
   "block": {
     "intent": "Intent",
     "blast": "Blast radius",
-    "risks": "Risks",
+    "risks": "Risk areas",
     "history": "PR history"
   },
   "noRisks": "No notable risks flagged.",
   "noHistory": "No prior PRs overlap these files.",
   "overlap": "{count} overlap",
   "unavailable": "Brief not available yet.",
-  "unavailableHint": "Run a review or open the PR to compute it.",
+  "unavailableHint": "Generate a brief to see a summary, risk areas and review focus.",
+  "label": "PR brief",
+  "generate": "Generate brief",
+  "generating": "Generating brief…",
+  "refresh": "Refresh brief",
+  "stale": "PR changed since the brief",
+  "noReview": "No review yet",
+  "modelHint": "If this keeps failing, check the Risk Brief model in Settings → Models.",
+  "loadErrorTitle": "Couldn't load the PR brief",
+  "fromLatestReview": "From the latest review · {agent} · {date}",
+  "reviewInfo": "About these counts",
+  "findingsCount": "{findings} findings · {blockers} blockers",
+  "score": "PR score",
+  "risk": {
+    "expand": "Show details: {title}",
+    "collapse": "Hide details: {title}",
+    "details": "Risk details"
+  },
+  "focus": {
+    "title": "Review focus — read these first"
+  },
+  "noFocus": "No focus points.",
+  "notInDiff": "File not in this PR's diff",
   "why": {
     "title": "git-why",
     "blame": "blame",

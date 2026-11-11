@@ -12,22 +12,6 @@ export const s = {
     // A grid item defaults to `min-width: auto`; 0 keeps long paths from widening the card.
     minWidth: 0,
   } satisfies CSSProperties,
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  } satisfies CSSProperties,
-  title: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    fontSize: 12,
-    fontWeight: 600,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
-    color: "var(--text-muted)",
-  } satisfies CSSProperties,
   statRow: {
     display: "flex",
     flexWrap: "wrap",

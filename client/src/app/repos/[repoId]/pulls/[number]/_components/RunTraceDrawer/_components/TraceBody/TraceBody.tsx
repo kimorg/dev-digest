@@ -14,6 +14,7 @@ import { TraceSection } from "../TraceSection";
 import { ToolCallRow } from "../ToolCallRow";
 import { PromptBlock } from "../PromptBlock";
 import { SkillRefs } from "../SkillRefs";
+import { SpecRefs } from "../SpecRefs";
 import { FindingsSection } from "../FindingsSection";
 import { Row, Stat } from "../atoms";
 
@@ -93,7 +94,14 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           <PromptBlock label={t("trace.prompt.repoMap")} text={pa.repo_map} color={PROMPT_COLORS.repoMap} />
         )}
         {pa.specs != null && (
-          <PromptBlock label={t("trace.prompt.specs")} text={pa.specs} color={PROMPT_COLORS.specs} />
+          <PromptBlock
+            label={t("trace.prompt.specs")}
+            text={pa.specs}
+            color={PROMPT_COLORS.specs}
+            // Absent on traces written before project context carried per-doc refs.
+            tokens={pa.tokens?.specs}
+            details={pa.spec_refs ? <SpecRefs refs={pa.spec_refs} specs={pa.specs} /> : undefined}
+          />
         )}
         {pa.intent != null && (
           <PromptBlock

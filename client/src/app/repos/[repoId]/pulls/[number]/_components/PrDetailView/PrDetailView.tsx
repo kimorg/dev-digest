@@ -32,7 +32,10 @@ export function PrDetailView() {
   const { activeRepo } = useActiveRepo();
   const repoNotFound = useRepoNotFound(repoId);
   const { prId, pr, isUnknownNumber, isLoading, isError, error, refetch } = usePrByNumber(repoId, number);
-  const { tab, traceRunId, setTab, openTrace, closeTrace } = usePrDetailUrlState(repoId, number);
+  const { tab, traceRunId, focus, fileHref, setTab, openTrace, closeTrace, clearFocus } = usePrDetailUrlState(
+    repoId,
+    number,
+  );
 
   const { data: reviews } = usePrReviews(prId);
   const { data: activeRuns } = usePrActiveRuns(prId);
@@ -125,6 +128,8 @@ export function PrDetailView() {
             prBody={pr.body}
             repoFullName={repoFullName}
             headSha={pr.head_sha}
+            files={pr.files}
+            fileHref={fileHref}
           />
         )}
 
@@ -146,7 +151,14 @@ export function PrDetailView() {
         )}
 
         {tab === "diff" && (
-          <DiffTab prId={prId} filesCount={pr.files_count} files={pr.files} canComment={canComment(pr)} />
+          <DiffTab
+            prId={prId}
+            filesCount={pr.files_count}
+            files={pr.files}
+            canComment={canComment(pr)}
+            focus={focus}
+            onFocusClear={clearFocus}
+          />
         )}
       </div>
 

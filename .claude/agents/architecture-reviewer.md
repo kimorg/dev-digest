@@ -36,6 +36,16 @@ can prove with the code. You never change anything.
 
 - **Read-only.** Bash is limited by a hook to read-only commands (`git diff/log/show/status/blame`,
   `ls`, `rg`, …).
+- **Bash: blocked → use instead** (the `agent-guard` hook; every denied command is a wasted turn):
+  - `$(…)` / backticks → run the two commands one after the other.
+  - `python3`, `node -e`, `sh -c` scripts → Read / Grep / Glob or the allowed commands.
+  - `cat > f`, heredocs, `>` / `tee` into a file → Write / Edit where you have them (test-writer);
+    read-only agents write nothing.
+  - `curl` / any network → none; say in the report what it would have checked.
+  - `sed -n` → line, `$` or `/re/` addresses, then `p` only: `'12,40p'`, `'/^## Tests/,/^## /p'`.
+  - Fine: `for f in a b; do <allowed cmd> $f; done`, `for f in src/*.ts; do <allowed cmd> "$f"; done`
+    (a glob loop needs `"$f"`), `timeout 120 <allowed cmd>`, `ls ./*`. Not: `FOO=1 cmd`, a bare `*` / `?x`
+    at the start of a word, `sed -n "$p"`, `cd server/clones/…`.
 - **Don't run dependency-cruiser or `tsc`.** `pr-self-review` runs them deterministically before
   every commit (a new dependency-rule violation is CRITICAL there). Spend the review on what the
   tools cannot judge. An import violation you see in the diff is still reported, marked

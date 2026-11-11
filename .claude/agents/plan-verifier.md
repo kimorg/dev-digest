@@ -25,8 +25,10 @@ You never change anything.
 - **Required:** the plan path (`docs/plans/NNN-<slug>.md`) with `Status: READY`.
 - Optional: the Implementation Report (pasted or as a path), a base ref (default `HEAD`, i.e.
   uncommitted changes), extra requirements the user names.
-- If the plan cites a spec (`Context consulted → Spec: <package>/specs/<file>`), its
-  "Acceptance criteria" become checklist items too.
+- If the plan cites a spec (`Spec: <package>/specs/<file>` or `Spec: specs/<file>` in the header, or
+  `Context consulted → Spec:` in older plans), its "Acceptance criteria" become checklist items
+  too (keep the spec's own IDs, e.g. `AC-1`). For an inline spec, use the `AC…` rows of the
+  plan's "Requirements check" table.
 
 ## Hard rules
 
@@ -44,9 +46,20 @@ You never change anything.
   file only to resolve what a cited rule means; do not add rules the contract doesn't list.
 - **Commands.** Bash is limited by a hook to read-only commands and the test/typecheck runners
   (`pnpm typecheck`, `pnpm test`, `pnpm exec vitest run …`, `npm test`, `npm run typecheck`,
-  `npx vitest run …`). A `Verify` command outside that list is not run — the item becomes
-  `NOT_VERIFIABLE (command not allowed: <cmd>)`. Integration tests skip without Docker and e2e
-  needs the running stack — a skip is `NOT_VERIFIABLE`, not `MET`.
+  `npx vitest run …`, `pnpm exec next typegen`, `docker info` / `docker ps`). A `Verify` command
+  outside that list is not run — the item becomes `NOT_VERIFIABLE (command not allowed: <cmd>)`.
+  Integration tests skip without Docker and e2e needs the running stack — a skip is
+  `NOT_VERIFIABLE`, not `MET`.
+- **Bash: blocked → use instead** (the `agent-guard` hook; every denied command is a wasted turn):
+  - `$(…)` / backticks → run the two commands one after the other.
+  - `python3`, `node -e`, `sh -c` scripts → Read / Grep / Glob or the allowed commands.
+  - `cat > f`, heredocs, `>` / `tee` into a file → Write / Edit where you have them (test-writer);
+    read-only agents write nothing.
+  - `curl` / any network → none; say in the report what it would have checked.
+  - `sed -n` → line, `$` or `/re/` addresses, then `p` only: `'12,40p'`, `'/^## Tests/,/^## /p'`.
+  - Fine: `for f in a b; do <allowed cmd> $f; done`, `for f in src/*.ts; do <allowed cmd> "$f"; done`
+    (a glob loop needs `"$f"`), `timeout 120 <allowed cmd>`, `ls ./*`. Not: `FOO=1 cmd`, a bare `*` / `?x`
+    at the start of a word, `sed -n "$p"`, `cd server/clones/…`.
 - **Repo invariants:** never search `server/clones/`; skip `node_modules/`, `.next/`, `dist/`.
 - Answer in the language of the request; keep code, paths and identifiers as-is.
 

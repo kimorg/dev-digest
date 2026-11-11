@@ -22,6 +22,38 @@ export function formatTokens(tokensIn: number, tokensOut: number): string {
 const SKILL_OPEN_RE = /^<skill name="[^"]*" version="[^"]*">\nDescription: [^\n]*\n\n?/gm;
 const SKILL_CLOSE_RE = /\n?^<\/skill>$/gm;
 
+const SPEC_OPEN = '<untrusted source="';
+const SPEC_OPEN_END = '">\n';
+const SPEC_CLOSE = "\n</untrusted>";
+
+/** Mirrors reviewer-core `wrapUntrusted`'s label sanitising. */
+function specSourceLabel(path: string): string {
+  return `spec:${path}`.replace(/[^\w./@#:-]/g, "_");
+}
+
+/**
+ * The text of one project-context doc exactly as it sat in the prompt, taken from the
+ * stored `specs` block (`<untrusted source="spec:<path>">…</untrusted>` blocks joined by
+ * blank lines). Blocks are walked in order, so a doc that quotes another block's tag can't
+ * be mistaken for it. Unknown path → null.
+ */
+export function extractSpecBlock(specs: string, path: string): string | null {
+  const label = specSourceLabel(path);
+  let pos = 0;
+  for (;;) {
+    const open = specs.indexOf(SPEC_OPEN, pos);
+    if (open < 0) return null;
+    const labelStart = open + SPEC_OPEN.length;
+    const labelEnd = specs.indexOf(SPEC_OPEN_END, labelStart);
+    if (labelEnd < 0) return null;
+    const contentStart = labelEnd + SPEC_OPEN_END.length;
+    const close = specs.indexOf(SPEC_CLOSE, contentStart);
+    if (close < 0) return null;
+    if (specs.slice(labelStart, labelEnd) === label) return specs.slice(contentStart, close);
+    pos = close + SPEC_CLOSE.length;
+  }
+}
+
 /** Skills prompt text for display: each skill's body without its name/description wrapper. */
 export function stripSkillHeaders(text: string): string {
   return text.replace(SKILL_OPEN_RE, "").replace(SKILL_CLOSE_RE, "");

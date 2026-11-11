@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { Agent } from "@devdigest/shared";
 import messages from "../../../../../../messages/en/agents.json";
@@ -40,10 +40,19 @@ function renderWithIntl(ui: React.ReactElement) {
 }
 
 describe("A2 Agent Editor (smoke)", () => {
-  it("has exactly two tabs: Config and Skills", () => {
+  it("has exactly three tabs: Config, Skills and Context (Context after Skills — AC-17)", () => {
     renderWithIntl(<AgentEditor agent={AGENT} tab="config" onTab={() => {}} />);
-    const tabs = screen.getAllByRole("button").filter((b) => ["Config", "Skills"].includes(b.textContent ?? ""));
-    expect(tabs.map((b) => b.textContent)).toEqual(["Config", "Skills"]);
+    const tabs = screen
+      .getAllByRole("button")
+      .filter((b) => ["Config", "Skills", "Context"].includes(b.textContent ?? ""));
+    expect(tabs.map((b) => b.textContent)).toEqual(["Config", "Skills", "Context"]);
+  });
+
+  it("clicking the Context tab asks the parent for tab 'context'", () => {
+    const onTab = vi.fn();
+    renderWithIntl(<AgentEditor agent={AGENT} tab="config" onTab={onTab} />);
+    fireEvent.click(screen.getByRole("button", { name: "Context" }));
+    expect(onTab).toHaveBeenCalledWith("context");
   });
 
   it("renders the Config tab fields", () => {

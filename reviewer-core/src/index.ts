@@ -19,6 +19,7 @@ export {
   INTENT_SCOPE_RULE,
   renderIntent,
   type PromptParts,
+  type ProjectContextDoc,
   type AssembledPrompt,
 } from './prompt.js';
 
