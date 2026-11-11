@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import { Icon } from "@devdigest/ui";
 import type { PrFile } from "@/lib/types";
 import { isAutoExpanded, parsePatch, type Line } from "../helpers";
-import { partitionAnnotations, type DiffAnnotation, type DiffAnnotationApi } from "../annotations";
+import { partitionAnnotations, type DiffAnnotation, type DiffAnnotationApi, type DiffFocus } from "../annotations";
 import { lineKey } from "../comments";
 import {
   buildThreads,
@@ -16,7 +16,7 @@ import {
   type CommentThread,
   type DiffCommentApi,
 } from "../comments";
-import { s, chevronFor } from "../styles";
+import { s, chevronFor, fileCardFor, lineOutside } from "../styles";
 import { CodeLine } from "../CodeLine";
 import { OutdatedComments } from "../OutdatedComments";
 import { UnplacedAnnotations } from "../UnplacedAnnotations";
@@ -40,6 +40,11 @@ function annotationsForLine(ln: Line, byKey: Map<string, DiffAnnotation[]>): Dif
   return (key && byKey.get(key)) || [];
 }
 
+/** Whether a parsed line is the new-file line `line` (deleted lines have no new number). */
+function isTargetLine(ln: Line, line: number): boolean {
+  return (ln.kind === "add" || ln.kind === "ctx") && ln.newNo === line;
+}
+
 interface FileCardProps {
   file: PrFile;
   commenting?: DiffCommentApi;
@@ -47,15 +52,31 @@ interface FileCardProps {
   /** Controlled expansion; without it the card manages its own state. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Set only on the focus target: starts open, gets the accent border, is scrolled to. */
+  focus?: DiffFocus;
+  /** Called when the user opens a card that is not the focus target. */
+  onFocusClear?: () => void;
 }
 
-export function FileCard({ file, commenting, annotations, open, onOpenChange }: FileCardProps) {
+export function FileCard({ file, commenting, annotations, open, onOpenChange, focus, onFocusClear }: FileCardProps) {
   const t = useTranslations("shell");
-  const [internalOpen, setInternalOpen] = React.useState(isAutoExpanded(file));
+  const [internalOpen, setInternalOpen] = React.useState(isAutoExpanded(file) || !!focus);
   const isOpen = open ?? internalOpen;
   const lines = React.useMemo(() => parsePatch(file.patch), [file.patch]);
+  const cardRef = React.useRef<HTMLDivElement>(null);
+  const focusLine = focus?.line ?? null;
+  const hasTargetLine = focusLine != null && lines.some((l) => isTargetLine(l, focusLine));
+
+  // Scroll the target line (or else the card top) into view once the card is open.
+  const isFocused = !!focus;
+  React.useEffect(() => {
+    if (!isFocused || !isOpen) return;
+    const el = cardRef.current?.querySelector('[data-testid="diff-line-target"]') ?? cardRef.current;
+    el?.scrollIntoView?.({ block: "start" });
+  }, [isFocused, focusLine, isOpen, hasTargetLine]);
 
   const toggle = () => {
+    if (!isOpen && !focus) onFocusClear?.();
     if (open === undefined) setInternalOpen(!isOpen);
     onOpenChange?.(!isOpen);
   };
@@ -84,7 +105,7 @@ export function FileCard({ file, commenting, annotations, open, onOpenChange }: 
     : 0;
 
   return (
-    <div style={s.fileCard}>
+    <div ref={cardRef} data-testid={focus ? "diff-file-focused" : undefined} style={fileCardFor(!!focus)}>
       <button
         type="button"
         aria-expanded={isOpen}
@@ -114,6 +135,9 @@ export function FileCard({ file, commenting, annotations, open, onOpenChange }: 
       </button>
       {isOpen && (
         <div style={s.fileBody}>
+          {focusLine != null && !hasTargetLine && (
+            <div style={lineOutside}>{t("diffViewer.lineOutsideHunks", { line: focusLine })}</div>
+          )}
           {lines.length === 0 ? (
             <div style={s.noDiff}>{t("diffViewer.noDiffText")}</div>
           ) : (
@@ -126,6 +150,7 @@ export function FileCard({ file, commenting, annotations, open, onOpenChange }: 
                 commenting={commenting}
                 annotations={annotationsForLine(ln, byKey)}
                 showAnnotations={!!annotations?.show}
+                isTarget={focusLine != null && isTargetLine(ln, focusLine)}
               />
             ))
           )}

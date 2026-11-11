@@ -10,6 +10,8 @@ export const s = {
     gap: 16,
     marginBottom: 20,
   } satisfies CSSProperties,
+  /** A grid item defaults to `min-width: auto`; 0 keeps long paths in a card from widening the column. */
+  briefCell: { minWidth: 0 } satisfies CSSProperties,
   descriptionBox: {
     border: "1px solid var(--border)",
     borderRadius: 8,

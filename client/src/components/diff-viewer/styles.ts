@@ -74,6 +74,33 @@ export const s = {
   } satisfies CSSProperties,
 } as const;
 
+/** Keeps a scrolled-to element clear of the sticky PR header. */
+const HEADER_CLEARANCE = "calc(var(--pr-header-h, 0px) + 8px)";
+
+/** File card; the focus target (opened from a brief link) gets an accent border. */
+export function fileCardFor(focused: boolean): CSSProperties {
+  return {
+    ...s.fileCard,
+    scrollMarginTop: HEADER_CLEARANCE,
+    ...(focused ? { border: "1px solid var(--accent)", boxShadow: "0 0 0 1px var(--accent)" } : {}),
+  };
+}
+
+/** Highlight for the focused line. */
+export const targetRow = {
+  background: "var(--accent-bg)",
+  boxShadow: "inset 3px 0 0 var(--accent)",
+  scrollMarginTop: HEADER_CLEARANCE,
+} satisfies CSSProperties;
+
+/** "Line N is outside the diff hunks." note inside the focused card. */
+export const lineOutside = {
+  padding: "6px 14px",
+  fontSize: 12,
+  color: "var(--accent-text)",
+  background: "var(--accent-bg)",
+} satisfies CSSProperties;
+
 /** Chevron rotates 90deg when the file card is open. */
 export function chevronFor(open: boolean): CSSProperties {
   return {

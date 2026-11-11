@@ -8,8 +8,11 @@ import type { PrFile } from "@devdigest/shared";
  * Per-file expansion of one group. Files the user hasn't touched follow the
  * viewer's size rule; `setAll` (the ⇕ button) overrides every file at once.
  */
-export function useGroupFileOpen(files: PrFile[]) {
-  const [overrides, setOverrides] = React.useState<ReadonlyMap<string, boolean>>(new Map());
+export function useGroupFileOpen(files: PrFile[], focusPath?: string) {
+  // The focus target starts open, even when its size rule would collapse it.
+  const [overrides, setOverrides] = React.useState<ReadonlyMap<string, boolean>>(
+    () => new Map(focusPath && files.some((f) => f.path === focusPath) ? [[focusPath, true]] : []),
+  );
   const isOpen = (path: string) => overrides.get(path) ?? isAutoExpanded(files.find((f) => f.path === path) ?? {});
   const api: DiffFileOpenApi = {
     isOpen,

@@ -13,23 +13,13 @@ export const s = {
   header: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     gap: 12,
   } satisfies CSSProperties,
   headerRight: {
     display: "flex",
     alignItems: "center",
     gap: 10,
-  } satisfies CSSProperties,
-  title: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    fontSize: 12,
-    fontWeight: 600,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
-    color: "var(--text-muted)",
   } satisfies CSSProperties,
   intent: {
     margin: 0,
@@ -70,6 +60,14 @@ export const s = {
     gap: 10,
     fontSize: 12,
     color: "var(--text-muted)",
+  } satisfies CSSProperties,
+  rule: {
+    width: "100%",
+    margin: 0,
+    borderTop: "1px solid var(--border)",
+    borderRight: "none",
+    borderBottom: "none",
+    borderLeft: "none",
   } satisfies CSSProperties,
   hint: { fontSize: 12.5, color: "var(--warn)" } satisfies CSSProperties,
 } as const;

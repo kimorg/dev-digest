@@ -28,6 +28,9 @@ import {
   UpdateConventionRequest,
   SetConventionsStatusRequest,
   RepoConventions,
+  ReviewFocusItem,
+  PrBriefModelResult,
+  PrBriefRecord,
 } from '@devdigest/shared';
 
 /**
@@ -140,6 +143,8 @@ describe('AI contracts parse fixtures', () => {
       blast: base,
       risks: { risks: [] },
       history: { history: [] },
+      summary: 's',
+      review_focus: [],
     });
     expect(brief.blast.degraded).toBe(false);
   });
@@ -423,5 +428,38 @@ describe('platform DTOs', () => {
         commits: [],
       }),
     ).not.toThrow();
+  });
+});
+
+describe('PR brief contracts (SPEC-006)', () => {
+  it('ReviewFocusItem rejects line 0; PrBriefModelResult accepts it (AC-13, AC-28)', () => {
+    expect(() => ReviewFocusItem.parse({ file: 'a.ts', line: 0, reason: 'r' })).toThrow();
+    expect(ReviewFocusItem.parse({ file: 'a.ts', line: 1, reason: 'r' }).line).toBe(1);
+    const loose = PrBriefModelResult.parse({
+      summary: 's',
+      risks: [],
+      review_focus: [{ file: 'a.ts', line: 0, reason: 'r' }],
+    });
+    expect(loose.review_focus[0]!.line).toBe(0);
+  });
+
+  it('PrBriefRecord parses with intent null and history null (AC-22)', () => {
+    const rec = PrBriefRecord.parse({
+      intent: null,
+      blast: { changed_symbols: [], downstream: [], summary: '' },
+      risks: { risks: [] },
+      history: null,
+      summary: 's',
+      review_focus: [],
+      head_sha: 'abc',
+      generated_at: '2026-11-10T00:00:00.000Z',
+      provider: 'openai',
+      model: 'gpt-4.1',
+      tokens_in: null,
+      tokens_out: null,
+      cost_usd: null,
+    });
+    expect(rec.intent).toBeNull();
+    expect(rec.history).toBeNull();
   });
 });

@@ -1,15 +1,8 @@
 import type { CSSProperties } from "react";
 
-/** Co-located styles for SettingsModels (per-feature model picker). */
+/** Co-located styles for SettingsModels (per-feature provider + model pickers). */
 export const s = {
   wrap: { maxWidth: 640 } satisfies CSSProperties,
-  row: { marginBottom: 18 } satisfies CSSProperties,
-  defaultTag: {
-    marginLeft: 8,
-    fontSize: 12,
-    fontWeight: 500,
-    color: "var(--text-muted)",
-  } satisfies CSSProperties,
   note: {
     display: "flex",
     gap: 10,

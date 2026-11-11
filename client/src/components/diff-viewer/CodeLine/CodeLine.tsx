@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import { commentTargetFor, type CommentThread, type DiffCommentApi } from "../comments";
 import { cs } from "../comments.styles";
 import { type Line } from "../helpers";
-import { s, lineRowFor, lineSignFor, markLabelFor, markRowFor } from "../styles";
+import { s, lineRowFor, lineSignFor, markLabelFor, markRowFor, targetRow } from "../styles";
 import type { DiffAnnotation } from "../annotations";
 import { Icon } from "@devdigest/ui";
 import { CommentThreadView } from "../CommentThreadView";
@@ -20,6 +20,7 @@ export function CodeLine({
   commenting,
   annotations,
   showAnnotations,
+  isTarget,
 }: {
   ln: Line;
   path: string;
@@ -28,6 +29,8 @@ export function CodeLine({
   /** Annotations anchored to this line; bars/labels always show, bodies only when `showAnnotations`. */
   annotations?: DiffAnnotation[];
   showAnnotations?: boolean;
+  /** This is the line a brief link pointed at: highlighted and scrolled to by the card. */
+  isTarget?: boolean;
 }) {
   const t = useTranslations("shell");
   const [hover, setHover] = React.useState(false);
@@ -53,7 +56,14 @@ export function CodeLine({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div style={mark ? { ...lineRowFor(ln.kind), ...markRowFor(mark.color) } : lineRowFor(ln.kind)}>
+      <div
+        data-testid={isTarget ? "diff-line-target" : undefined}
+        style={{
+          ...lineRowFor(ln.kind),
+          ...(mark ? markRowFor(mark.color) : {}),
+          ...(isTarget ? targetRow : {}),
+        }}
+      >
         <span className="mono tnum" style={{ ...s.lineNo, position: "relative" }}>
           {showAdd && target && (
             <button

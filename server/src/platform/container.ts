@@ -30,6 +30,8 @@ import { RepoIntelService } from '../modules/repo-intel/service.js';
 import type { FeatureModels } from '../modules/settings/types.js';
 import type { PrIntents } from '../modules/intent/types.js';
 import { buildIntentService } from '../modules/intent/wiring.js';
+import type { PrBlastRadius } from '../modules/blast/types.js';
+import { buildBlastService } from '../modules/blast/wiring.js';
 import type { ProjectContext } from '../modules/project-context/types.js';
 import type { ContextDocSource } from '../modules/project-context/ports.js';
 import { CloneDocSource } from '../modules/project-context/infrastructure/clone-doc-source.js';
@@ -86,6 +88,7 @@ export class Container {
   private _reviewRepo?: ReviewRepository;
   private _repoIntel?: RepoIntel;
   private _prIntent?: PrIntents;
+  private _prBlast?: PrBlastRadius;
   private _projectContext?: ProjectContext;
   private _contextDocSource?: ContextDocSource;
   private _depgraph?: DepGraph;
@@ -138,6 +141,11 @@ export class Container {
    */
   get prIntent(): PrIntents {
     return (this._prIntent ??= buildIntentService(this));
+  }
+
+  /** PR blast-radius facade, read by the brief module. One cached instance. */
+  get prBlast(): PrBlastRadius {
+    return (this._prBlast ??= buildBlastService(this));
   }
 
   /**

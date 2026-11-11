@@ -14,7 +14,7 @@ import { VerdictBanner } from "../VerdictBanner";
 import { useDeleteReview } from "@/lib/hooks/reviews";
 import { formatDateTime } from "@/lib/format-date";
 import { VERDICT_META } from "../../constants";
-import { countOpenCriticals } from "./helpers";
+import { countOpenCriticals } from "../../helpers";
 import { s } from "./styles";
 
 export function ReviewRunAccordion({

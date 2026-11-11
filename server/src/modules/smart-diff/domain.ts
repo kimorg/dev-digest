@@ -1,4 +1,5 @@
 import type { SmartDiff, SmartDiffGroup, SmartDiffRole } from '@devdigest/shared';
+import { pickLatestPerAgent } from '@devdigest/shared';
 import { ROLE_PATTERNS, SMART_DIFF_CHECK_ORDER, SMART_DIFF_DISPLAY_ORDER } from './constants.js';
 import type { FindingAnchor, ReviewHead, SmartDiffSourceFile } from './types.js';
 
@@ -12,19 +13,11 @@ export function classifyFile(path: string): SmartDiffRole {
 
 /**
  * Ids of the latest review per agent (a null agent is one group). `heads` must be
- * newest-first. The "latest review per agent" rule has three copies that must change together:
- * the PR list (`pulls/routes.ts`), this function, and `client/src/lib/latest-review.ts`.
+ * newest-first. The rule itself is `pickLatestPerAgent` in `@devdigest/shared`, shared with
+ * the PR list (`pulls/routes.ts`), the brief module and `client/src/lib/latest-review.ts`.
  */
 export function latestReviewIdsPerAgent(heads: readonly ReviewHead[]): string[] {
-  const seen = new Set<string>();
-  const ids: string[] = [];
-  for (const h of heads) {
-    const key = h.agentId ?? '';
-    if (seen.has(key)) continue;
-    seen.add(key);
-    ids.push(h.id);
-  }
-  return ids;
+  return pickLatestPerAgent(heads, (h) => h.agentId).map((h) => h.id);
 }
 
 const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);

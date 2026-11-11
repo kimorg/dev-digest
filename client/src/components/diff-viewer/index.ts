@@ -3,4 +3,4 @@
 export { DiffViewer } from "./DiffViewer";
 export type { DiffCommentApi } from "./comments";
 export { isAutoExpanded } from "./helpers";
-export type { DiffAnnotation, DiffAnnotationApi, DiffFileOpenApi, DiffLineMark } from "./annotations";
+export type { DiffAnnotation, DiffAnnotationApi, DiffFileOpenApi, DiffFocus, DiffLineMark } from "./annotations";

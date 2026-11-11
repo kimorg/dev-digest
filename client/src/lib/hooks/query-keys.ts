@@ -44,6 +44,7 @@ export const queryKeys = {
   prComments: (prId: string | null | undefined) => ["pr-comments", prId] as const,
   prSmartDiff: (prId: string | null | undefined) => ["pr-smart-diff", prId] as const,
   prIntent: (prId: string | null | undefined) => ["pr-intent", prId] as const,
+  prBrief: (prId: string | null | undefined) => ["pr-brief", prId] as const,
   prBlast: (prId: string | null | undefined) => ["pr-blast", prId] as const,
   prHistory: (prId: string | null | undefined) => ["pr-history", prId] as const,
   runTrace: (runId: string | null | undefined) => ["run-trace", runId] as const,

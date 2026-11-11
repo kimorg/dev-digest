@@ -9,6 +9,7 @@
  *  - contracts/trace      RunTrace, RunEvent, RunLogLine (single-document trace)
  *  - contracts/platform   Settings, ConnTestResult, Repo, PrMeta/PrDetail, SpecFile, …
  *  - adapters             adapter interfaces + ModelInfo
+ *  - rules/latest-per-agent  pickLatestPerAgent (pure, shared "latest review per agent" rule)
  *
  * Feature agents (A1–A6) and F2 import everything from here. The barrel is
  * stable — feature agents EXTEND with new files, they do not edit existing ones.
@@ -26,3 +27,4 @@ export * from './contracts/observability.js';
 export * from './contracts/productionize.js';
 export * from './contracts/project-context.js';
 export * from './adapters.js';
+export * from './rules/latest-per-agent.js';

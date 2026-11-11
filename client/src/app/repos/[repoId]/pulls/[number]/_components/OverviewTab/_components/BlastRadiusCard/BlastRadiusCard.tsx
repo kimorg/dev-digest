@@ -54,15 +54,9 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha }: BlastRa
   const kinds = kindsByName(data);
   const reason = data.reason ?? "no_data";
 
+  // The "Blast radius" label sits above the card (OverviewTab).
   return (
     <section style={s.card} aria-label={tBrief("blast")}>
-      <div style={s.header}>
-        <span style={s.title}>
-          <Icon.Workflow size={14} />
-          {tBrief("blast")}
-        </span>
-      </div>
-
       <div style={s.statRow}>
         {(
           [

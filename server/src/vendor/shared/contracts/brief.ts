@@ -159,10 +159,55 @@ export const SmartDiff = z.object({
 export type SmartDiff = z.infer<typeof SmartDiff>;
 
 // ---- Composed PR Brief (pr_brief.json) ----
+export const ReviewFocusItem = z.object({
+  file: z.string(),
+  line: z.number().int().min(1),
+  reason: z.string(),
+});
+export type ReviewFocusItem = z.infer<typeof ReviewFocusItem>;
+
 export const PrBrief = z.object({
-  intent: Intent,
+  intent: Intent.nullable(),
   blast: BlastRadius,
   risks: Risks,
-  history: PrHistory,
+  history: PrHistory.nullable(),
+  summary: z.string(),
+  review_focus: z.array(ReviewFocusItem),
 });
 export type PrBrief = z.infer<typeof PrBrief>;
+
+/** A stored brief: the PrBrief plus the generation metadata. */
+export const PrBriefRecord = PrBrief.extend({
+  head_sha: z.string(),
+  generated_at: z.string(),
+  provider: z.string(),
+  model: z.string(),
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+});
+export type PrBriefRecord = z.infer<typeof PrBriefRecord>;
+
+/** GET/POST /pulls/:id/brief response. `stale` = the PR head moved since generation. */
+export const PrBriefView = z.object({
+  brief: PrBriefRecord.nullable(),
+  stale: z.boolean(),
+});
+export type PrBriefView = z.infer<typeof PrBriefView>;
+
+/**
+ * What the model returns. Deliberately loose (no min/max, any integer line):
+ * the server grounds and clamps it afterwards instead of re-asking the model.
+ */
+export const PrBriefModelResult = z.object({
+  summary: z.string(),
+  risks: z.array(Risk),
+  review_focus: z.array(
+    z.object({
+      file: z.string(),
+      line: z.number().int(),
+      reason: z.string(),
+    }),
+  ),
+});
+export type PrBriefModelResult = z.infer<typeof PrBriefModelResult>;

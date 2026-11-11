@@ -279,6 +279,26 @@ file endpoint maps it to 422, and the scan and the review run treat it like `mis
 `server/src/modules/project-context/service.ts:69,147,212` · **Apply when:** adding another reader of clone files
 whose API must tell "not there" from "not allowed".
 
+### 2026-11-10 — "latest run per agent" now lives once per vendored copy: `pickLatestPerAgent` in `@devdigest/shared`
+**Context:** plan 008 (PR brief) R2. · **Insight:** Supersedes: "\"latest run per agent\" = latest `reviews` row per
+`(pr_id, agent_id)`; the rule is duplicated in the client". The grouping rule (first item per agent from a newest-first
+list; null/undefined agent = one group) moved to `vendor/shared/rules/latest-per-agent.ts`, byte-identical in
+`server/src/vendor/shared` and `client/src/vendor/shared` — the first non-contract file in the shared kernel. Server
+callers: `pulls/routes.ts` (PR-list loop), `smart-diff/domain.ts:20`, `brief/domain.ts`; client: `src/lib/latest-review.ts`.
+Change the rule in both vendored copies, not in a caller. · **Evidence:** `server/src/vendor/shared/rules/latest-per-agent.ts`,
+`server/test/latest-per-agent.test.ts` · **Apply when:** changing which run per agent counts anywhere.
+
+### 2026-11-10 — `parseFileRef` (`file_refs` grammar) is hand-copied in server and client and already drifted once
+**Context:** plan 008 /run-plan, architecture finding A1. · **Insight:** the brief's `file_refs` grammar (`path`,
+`path:N`, `path:N-M`) is parsed by two copies: server `brief/domain.ts` (grounding: a ref is kept only when
+`parseFileRef(ref).path` is an allowed path) and client `OverviewTab/helpers.ts` (links). The server copy first used
+`/^(.*):(\d+)$/`, so `src/a.ts:12-18` became the whole path and grounding silently dropped valid range refs — and a
+risk whose refs were all ranges. The copies are now identical (trim, same regex, `m?.[1] || trimmed` fallback, line ≥ 1
+else null; `":12"` → line 12, accepted by the user). Moving it to `vendor/shared/rules/file-ref.ts` is an accepted open
+item. Until then, change both bodies together. · **Evidence:** `server/src/modules/brief/domain.ts:85-95`,
+`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/helpers.ts:3-12`, `server/test/brief-domain.test.ts` ·
+**Apply when:** touching brief grounding, the `file_refs` format or the Overview brief links.
+
 ## Tool & Library Notes
 
 _Quirks of dependencies, tools, CLIs and the environment._
@@ -393,9 +413,21 @@ under `NODE_ENV=test`, so a test of it must build the app with `nodeEnv: 'develo
 **Evidence:** `server/src/app.ts:164-167`; T-22 in `server/test/project-context.it.test.ts` · **Apply when:** adding
 `config.rateLimit` to a route or any plugin that throws non-`AppError` errors.
 
+### 2026-11-10 — `MockLLMProvider` throws a plain `Error` when its fixture fails the schema — that is the "invalid model output" test seam
+**Context:** plan 008 T-5, AC-13 (bad model output → 502, no row stored). · **Insight:** `completeStructured` in the
+mock validates the fixture against the requested schema and throws `new Error('MockLLMProvider fixture failed schema…')`.
+A service that wraps model failures (the brief service throws `ExternalServiceError`) turns it into 502
+`external_service_error`, so an integration test gets "invalid model output" just by passing a fixture that
+fails the schema; no custom provider is needed. · **Evidence:** `server/src/adapters/mocks.ts:95`,
+`server/src/modules/brief/service.ts:80`, `server/test/brief.it.test.ts` · **Apply when:** testing a model-output
+validation failure path.
+
 ## Recurring Errors & Fixes
 
 _An error that keeps coming back — quote its text — and the fix._
+
+### 2026-11-11 — OpenRouter 402 "can only afford N" on conventions / intent / brief calls
+See `reviewer-core/INSIGHTS.md` → "OpenRouter 402 "You requested up to 65536 tokens, but can only afford N" = no `max_tokens`, even with BYOK".
 
 ## Session Notes
 
@@ -422,6 +454,8 @@ _One dated line per session that added entries: `- YYYY-MM-DD — task: titles a
 - 2026-11-05 — /run-plan e2e runs (enabled skill count, throwaway worktrees): `constants.ts` importing a type from `helpers.ts` is a new `domain-is-pure` violation, even with `import type`
 - 2026-11-06 — plan 006 Project Context (/run-plan): a clone doc read has three outcomes besides ok, drizzle-orm 0.38.4 `check()` works, `@fastify/rate-limit` rejects with a plain 429 object, trace `tokens.specs` counts the wrapped slot (open question)
 - 2026-11-06 — self-review fixes (context paths): delete-then-insert of a child list in a transaction still races: concurrent PUTs fail with 23505 → 500
+- 2026-11-10 — plan 008 PR brief (/run-plan, resumed): "latest run per agent" now lives once per vendored copy, `parseFileRef` is hand-copied in server and client and already drifted once, `MockLLMProvider` throws a plain `Error` when its fixture fails the schema
+- 2026-11-11 — OpenRouter 402 on conventions Re-scan with BYOK: pointer "OpenRouter 402 "can only afford N" on conventions / intent / brief calls"
 
 ## Open Questions
 

@@ -70,7 +70,9 @@ describe("BlastRadiusCard — map", () => {
     renderCard();
 
     expect(await screen.findByText("getContext()")).toBeInTheDocument();
-    expect(screen.getByText("Blast radius")).toBeInTheDocument();
+    // The title is a label above the card (OverviewTab), not inside it; the region keeps the name.
+    expect(screen.getByRole("region", { name: "Blast radius" })).toBeInTheDocument();
+    expect(screen.queryByText("Blast radius")).not.toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument(); // interface: no parentheses
     const first = screen.getByRole("button", { name: /getContext\(\)/ });
     expect(first).toHaveAttribute("aria-expanded", "true");
