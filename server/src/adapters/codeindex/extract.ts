@@ -197,13 +197,15 @@ export function extractEndpoints(content: string): string[] {
 /**
  * Heuristic cron/scheduled-job detector. Catches cron expressions in
  * `schedule('* * * * *')`, `cron.schedule(...)`, `CronJob(...)`, and
- * `jobs.register('kind')` / `enqueue(ws, 'kind')` style background work.
+ * `jobs.register('kind')` / `enqueue(ws, 'kind')` style background work
+ * (snake_case or kebab-case kinds).
  */
 export function extractCrons(content: string): string[] {
   const out = new Set<string>();
   const lines = content.split('\n');
   const cronExprRe = /\b(?:cron|schedule|CronJob)\s*[.(]?\s*\(?\s*['"`]([^'"`]*(?:\*|\d+\s+\d+)[^'"`]*)['"`]/i;
-  const jobKindRe = /\b(?:register|enqueue)\s*\(\s*(?:[A-Za-z0-9_$.]+\s*,\s*)?['"`]([a-z][a-z0-9_]*)['"`]/i;
+  // Job kinds may be snake_case or kebab-case (`'repo-intel-index'`).
+  const jobKindRe = /\b(?:register|enqueue)\s*\(\s*(?:[A-Za-z0-9_$.]+\s*,\s*)?['"`]([a-z][a-z0-9_-]*)['"`]/i;
   for (const raw of lines) {
     const m = raw.match(cronExprRe);
     if (m) out.add(m[1]!.trim());

@@ -22,6 +22,12 @@ export class NotFoundError extends AppError {
   }
 }
 
+export class ForbiddenError extends AppError {
+  constructor(message = 'Forbidden', details?: unknown) {
+    super('forbidden', message, 403, details);
+  }
+}
+
 export class ValidationError extends AppError {
   constructor(message = 'Validation failed', details?: unknown) {
     super('validation_error', message, 422, details);
@@ -51,4 +57,9 @@ export class ConflictError extends AppError {
   constructor(message = 'Conflict', code = 'conflict', details?: unknown) {
     super(code, message, 409, details);
   }
+}
+
+/** Narrowing guard for code that catches `unknown` and must tell domain errors from crashes. */
+export function isAppError(err: unknown): err is AppError {
+  return err instanceof AppError;
 }
