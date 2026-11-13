@@ -145,10 +145,17 @@ export const Repo = z.object({
   full_name: z.string(),
   default_branch: z.string(),
   clone_path: z.string().nullable(),
-  last_polled_at: z.string().nullable(),
+  last_polled_at: z.string().datetime().nullish(),
   created_by: z.string().nullable(),
 });
 export type Repo = z.infer<typeof Repo>;
+
+/** Result of a manual PR-list sync (`POST /repos/:id/poll`). */
+export const PollResult = z.object({
+  synced: z.number().int(),
+  polled_at: z.string().datetime(),
+});
+export type PollResult = z.infer<typeof PollResult>;
 
 // ---- Pull requests ----
 export const PrStatus = z.enum(['needs_review', 'reviewed', 'stale', 'open', 'closed', 'merged']);
