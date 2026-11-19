@@ -10,20 +10,25 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { formatModels, modelMismatch, modelsOf, type ModelTagged, type RunModels } from "./records/stats.js";
 
 const HISTORY = join(dirname(fileURLToPath(import.meta.url)), "..", "results", "history.jsonl");
 
-interface Row { run_id: string; git_sha: string; nodeid: string; outcome: string }
+interface Row extends ModelTagged { run_id: string; git_sha: string; nodeid: string; outcome: string }
 
-function loadRuns(): Map<string, { sha: string; outcomes: Map<string, string> }> {
-  const runs = new Map<string, { sha: string; outcomes: Map<string, string> }>();
+interface Run { sha: string; outcomes: Map<string, string>; rows: Row[]; models?: RunModels }
+
+function loadRuns(): Map<string, Run> {
+  const runs = new Map<string, Run>();
   if (!existsSync(HISTORY)) return runs;
   for (const line of readFileSync(HISTORY, "utf8").split("\n").filter(Boolean)) {
     const r = JSON.parse(line) as Row;
-    const run = runs.get(r.run_id) ?? { sha: r.git_sha, outcomes: new Map() };
+    const run: Run = runs.get(r.run_id) ?? { sha: r.git_sha, outcomes: new Map(), rows: [] };
     run.outcomes.set(r.nodeid, r.outcome);
+    run.rows.push(r);
     runs.set(r.run_id, run);
   }
+  for (const run of runs.values()) run.models = modelsOf(run.rows);
   return runs;
 }
 
@@ -37,16 +42,22 @@ function main() {
   if (args.includes("--list")) {
     for (const [id, r] of runs) {
       const passed = [...r.outcomes.values()].filter((o) => o === "pass").length;
-      console.log(`${id}  sha ${r.sha.padEnd(16)} ${passed}/${r.outcomes.size} passed`);
+      console.log(`${id}  sha ${r.sha.padEnd(16)} ${passed}/${r.outcomes.size} passed  ${formatModels(r.models)}`);
     }
     return;
   }
   const ids = args.length === 2 ? args : [...runs.keys()].slice(-2);
   if (ids.length < 2) return console.log("Need at least two runs to compare.");
   const [a, b] = ids.map((id) => runs.get(id)!);
-  console.log(`A ${ids[0]}  sha ${a.sha}`);
-  console.log(`B ${ids[1]}  sha ${b.sha}`);
-  if (a.sha === b.sha) console.log("note: same git sha — differences are run-to-run noise, not a version change.");
+  console.log(`A ${ids[0]}  sha ${a.sha}  ${formatModels(a.models)}`);
+  console.log(`B ${ids[1]}  sha ${b.sha}  ${formatModels(b.models)}`);
+  const mismatch = modelMismatch(a.models, b.models);
+  if (mismatch.length) {
+    console.log("warning: A and B ran on different models — flips may come from the model, not the code:");
+    mismatch.forEach((m) => console.log(`  - ${m}`));
+  } else if (a.sha === b.sha) {
+    console.log("note: same git sha and models — differences are run-to-run noise, not a version change.");
+  }
 
   const gained: string[] = [];
   const lost: string[] = [];

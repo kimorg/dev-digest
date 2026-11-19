@@ -53,6 +53,72 @@ export interface EvalRecord {
   metrics: { durationMs: number; inputTokens: number; outputTokens: number; toolCallCount: number };
   trace: { tools: string[]; subagents: string[]; skills: string[]; reads: string[] };
   output_file: string;
+  // schema ≥ 2 — absent on older records, which then count as "not recorded".
+  backend?: string;
+  task_model?: string;
+  judge_model?: string;
+}
+
+// --- Model provenance -------------------------------------------------------
+// The defaults are "newest of the family" aliases, so the model behind a series can move
+// without any repo change. Rows carry the model the provider actually SERVED; these helpers
+// let repeat/delta/compare/benchmark show it and refuse to compare different models silently.
+
+/** Any row that carries model provenance — records.jsonl rows and history.jsonl rows alike. */
+export interface ModelTagged {
+  backend?: string;
+  task_model?: string;
+  judge_model?: string;
+}
+
+/** Distinct, sorted values per dimension across a set of rows. Empty list = not recorded. */
+export interface RunModels {
+  backend: string[];
+  task: string[];
+  judge: string[];
+}
+
+const distinct = (xs: (string | undefined)[]): string[] =>
+  [...new Set(xs.filter((x): x is string => Boolean(x)))].sort();
+
+export function modelsOf(rows: ModelTagged[]): RunModels {
+  return {
+    backend: distinct(rows.map((r) => r.backend)),
+    task: distinct(rows.map((r) => r.task_model)),
+    judge: distinct(rows.map((r) => r.judge_model)),
+  };
+}
+
+/** One-line human form: "subscription · task claude-haiku-5-5 · judge claude-sonnet-5-5". */
+export function formatModels(m: RunModels | undefined): string {
+  const part = (xs: string[] | undefined) => (xs?.length ? xs.join(", ") : "not recorded");
+  return `${part(m?.backend)} · task ${part(m?.task)} · judge ${part(m?.judge)}`;
+}
+
+const DIMENSIONS = [
+  ["backend", "backend"],
+  ["task", "task model"],
+  ["judge", "judge model"],
+] as const;
+
+/**
+ * Why two series are NOT a like-for-like comparison, one message per dimension; [] when they
+ * are. A dimension recorded on neither side is skipped (e.g. no judge in the workflow tier);
+ * recorded on one side only is reported, since the unrecorded side may be a different model.
+ */
+export function modelMismatch(a: RunModels | undefined, b: RunModels | undefined): string[] {
+  const out: string[] = [];
+  for (const [key, name] of DIMENSIONS) {
+    const la = a?.[key] ?? [];
+    const lb = b?.[key] ?? [];
+    if (la.length === 0 && lb.length === 0) continue;
+    if (la.length === 0 || lb.length === 0) {
+      out.push(`${name}: not recorded on ${la.length === 0 ? "A" : "B"} side (${la.join(", ") || "?"} → ${lb.join(", ") || "?"})`);
+    } else if (la.join("|") !== lb.join("|")) {
+      out.push(`${name}: ${la.join(", ")} → ${lb.join(", ")}`);
+    }
+  }
+  return out;
 }
 
 /** Count the lines currently in records.jsonl — a marker to slice "new since a run started". */

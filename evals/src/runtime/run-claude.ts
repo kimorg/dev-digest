@@ -26,6 +26,12 @@ export interface Result {
   numTurns: number;
   isError: boolean;
   metrics: Metrics;
+  /**
+   * Model id the provider reported serving the main thread (`message.model` of the first real
+   * assistant message) — e.g. "claude-haiku-5-5" for the alias "haiku", or "anthropic/claude-haiku-5.5"
+   * on OpenRouter. Undefined when no model response arrived (crash, auth or billing error).
+   */
+  servedModel?: string;
 }
 
 export interface RunOptions {
@@ -87,6 +93,7 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
   let inputTokens = 0;
   let outputTokens = 0;
   let stoppedEarly = false;
+  let servedModel: string | undefined;
   // Wall-clock fallback: on an early stop we break before the result message that carries
   // duration_ms/usage, so those stay 0. Stamp duration ourselves, and accumulate output tokens
   // off each assistant message, so an early-stopped case still reports meaningful metrics.
@@ -98,6 +105,10 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     loop: for await (const msg of query({ prompt, options })) {
       if (msg.type === "assistant") {
         numTurns++;
+        // Main thread only: subagent messages (parent_tool_use_id set) may run on another model.
+        // The CLI stamps its own error notices with a "<synthetic>" model — not a provider answer.
+        const model = msg.message.model;
+        if (!servedModel && msg.parent_tool_use_id === null && model && !model.startsWith("<")) servedModel = model;
         outputTokens += (msg.message as any).usage?.output_tokens ?? 0;
         for (const block of msg.message.content as any[]) {
           if (block.type === "text") textParts.push(block.text);
@@ -161,5 +172,6 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     numTurns,
     isError,
     metrics: { durationMs, inputTokens, outputTokens, toolCallCount },
+    servedModel,
   };
 }

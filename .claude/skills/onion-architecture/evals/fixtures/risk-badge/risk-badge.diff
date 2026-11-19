@@ -1,0 +1,246 @@
+diff --git a/server/src/modules/risk-badge/domain.ts b/server/src/modules/risk-badge/domain.ts
+new file mode 100644
+index 0000000..d998e39
+--- /dev/null
++++ b/server/src/modules/risk-badge/domain.ts
+@@ -0,0 +1,11 @@
++import type { RiskLevel } from './types.js';
++
++const LABELS: Record<RiskLevel, string> = {
++  green: 'Low risk',
++  amber: 'Needs attention',
++  red: 'Blocking issues',
++};
++
++export function badgeLabel(level: RiskLevel): string {
++  return LABELS[level];
++}
+diff --git a/server/src/modules/risk-badge/ports.ts b/server/src/modules/risk-badge/ports.ts
+new file mode 100644
+index 0000000..5d87a75
+--- /dev/null
++++ b/server/src/modules/risk-badge/ports.ts
+@@ -0,0 +1,5 @@
++import type { RiskSnapshot } from './types.js';
++
++export interface RiskBadgeStore {
++  computeAndSave(workspaceId: string, prId: string): Promise<RiskSnapshot | undefined>;
++}
+diff --git a/server/src/modules/risk-badge/repository.ts b/server/src/modules/risk-badge/repository.ts
+new file mode 100644
+index 0000000..d342013
+--- /dev/null
++++ b/server/src/modules/risk-badge/repository.ts
+@@ -0,0 +1,65 @@
++import { and, desc, eq, sql } from 'drizzle-orm';
++import type { Db } from '../../db/client.js';
++import * as t from '../../db/schema.js';
++import type { RiskBadgeStore } from './ports.js';
++import type { RiskLevel, RiskSnapshot } from './types.js';
++
++export class RiskBadgeRepository implements RiskBadgeStore {
++  constructor(private db: Db) {}
++
++  async computeAndSave(workspaceId: string, prId: string): Promise<RiskSnapshot | undefined> {
++    return this.db.transaction(async (tx) => {
++      const [run] = await tx
++        .select({ id: t.agentRuns.id })
++        .from(t.agentRuns)
++        .innerJoin(t.pullRequests, eq(t.pullRequests.id, t.agentRuns.prId))
++        .where(and(eq(t.pullRequests.workspaceId, workspaceId), eq(t.agentRuns.prId, prId)))
++        .orderBy(desc(t.agentRuns.createdAt))
++        .limit(1);
++      if (!run) return undefined;
++
++      const [agg] = await tx
++        .select({
++          critical: sql<number>`count(*) filter (where ${t.findings.severity} = 'CRITICAL')::int`,
++          warning: sql<number>`count(*) filter (where ${t.findings.severity} = 'WARNING')::int`,
++          level: sql<RiskLevel>`case
++            when count(*) filter (where ${t.findings.severity} = 'CRITICAL') > 0 then 'red'
++            when count(*) filter (where ${t.findings.severity} = 'WARNING') >= 3 then 'amber'
++            else 'green'
++          end`,
++        })
++        .from(t.findings)
++        .where(eq(t.findings.runId, run.id));
++
++      const [saved] = await tx
++        .insert(t.riskBadges)
++        .values({
++          prId,
++          runId: run.id,
++          level: agg?.level ?? 'green',
++          critical: agg?.critical ?? 0,
++          warning: agg?.warning ?? 0,
++        })
++        .onConflictDoUpdate({
++          target: t.riskBadges.prId,
++          set: {
++            runId: run.id,
++            level: agg?.level ?? 'green',
++            critical: agg?.critical ?? 0,
++            warning: agg?.warning ?? 0,
++            computedAt: sql`now()`,
++          },
++        })
++        .returning();
++
++      return {
++        prId: saved.prId,
++        runId: saved.runId,
++        level: saved.level as RiskLevel,
++        critical: saved.critical,
++        warning: saved.warning,
++        computedAt: saved.computedAt.toISOString(),
++      };
++    });
++  }
++}
+diff --git a/server/src/modules/risk-badge/routes.ts b/server/src/modules/risk-badge/routes.ts
+new file mode 100644
+index 0000000..da4fe25
+--- /dev/null
++++ b/server/src/modules/risk-badge/routes.ts
+@@ -0,0 +1,33 @@
++import type { FastifyInstance } from 'fastify';
++import type { ZodTypeProvider } from 'fastify-type-provider-zod';
++import { z } from 'zod';
++import { getContext } from '../_shared/context.js';
++import { IdParams } from '../_shared/schemas.js';
++import { buildRiskBadgeService } from './wiring.js';
++
++const RiskBadgeDto = z.object({
++  prId: z.string().uuid(),
++  runId: z.string().uuid(),
++  level: z.enum(['green', 'amber', 'red']),
++  label: z.string(),
++  critical: z.number().int(),
++  warning: z.number().int(),
++  computedAt: z.string(),
++});
++
++/**
++ *   GET /pulls/:id/risk-badge → risk level of the PR's latest review run
++ */
++export default async function riskBadgeRoutes(appBase: FastifyInstance) {
++  const app = appBase.withTypeProvider<ZodTypeProvider>();
++  const service = buildRiskBadgeService(app.container);
++
++  app.get(
++    '/pulls/:id/risk-badge',
++    { schema: { params: IdParams, response: { 200: RiskBadgeDto } } },
++    async (req, reply) => {
++      const { workspaceId } = await getContext(app.container, req);
++      return service.get(workspaceId, req.params.id, reply);
++    },
++  );
++}
+diff --git a/server/src/modules/risk-badge/service.ts b/server/src/modules/risk-badge/service.ts
+new file mode 100644
+index 0000000..8d2229f
+--- /dev/null
++++ b/server/src/modules/risk-badge/service.ts
+@@ -0,0 +1,17 @@
++import type { FastifyReply } from 'fastify';
++import { badgeLabel } from './domain.js';
++import type { RiskBadgeStore } from './ports.js';
++import type { RiskBadge } from './types.js';
++
++export class RiskBadgeService {
++  constructor(private store: RiskBadgeStore) {}
++
++  async get(workspaceId: string, prId: string, reply: FastifyReply): Promise<RiskBadge | undefined> {
++    const snapshot = await this.store.computeAndSave(workspaceId, prId);
++    if (!snapshot) {
++      reply.status(404).send({ error: { code: 'not_found', message: 'No review run for this pull request' } });
++      return undefined;
++    }
++    return { ...snapshot, label: badgeLabel(snapshot.level) };
++  }
++}
+diff --git a/server/src/modules/risk-badge/types.ts b/server/src/modules/risk-badge/types.ts
+new file mode 100644
+index 0000000..1b5f267
+--- /dev/null
++++ b/server/src/modules/risk-badge/types.ts
+@@ -0,0 +1,14 @@
++export type RiskLevel = 'green' | 'amber' | 'red';
++
++export interface RiskSnapshot {
++  prId: string;
++  runId: string;
++  level: RiskLevel;
++  critical: number;
++  warning: number;
++  computedAt: string;
++}
++
++export interface RiskBadge extends RiskSnapshot {
++  label: string;
++}
+diff --git a/server/src/modules/risk-badge/wiring.ts b/server/src/modules/risk-badge/wiring.ts
+new file mode 100644
+index 0000000..cec1d3a
+--- /dev/null
++++ b/server/src/modules/risk-badge/wiring.ts
+@@ -0,0 +1,6 @@
++import type { Container } from '../../platform/container.js';
++import { RiskBadgeService } from './service.js';
++
++export function buildRiskBadgeService(container: Container): RiskBadgeService {
++  return new RiskBadgeService(container.riskBadgeRepository);
++}
+diff --git a/server/src/modules/index.ts b/server/src/modules/index.ts
+index 4be1f0a..9c2d7e3 100644
+--- a/server/src/modules/index.ts
++++ b/server/src/modules/index.ts
+@@ -14,6 +14,7 @@ import projectContextRoutes from './project-context/routes.js';
+ import pullsRoutes from './pulls/routes.js';
+ import repoIntelRoutes from './repo-intel/routes.js';
+ import reposRoutes from './repos/routes.js';
+ import reviewsRoutes from './reviews/routes.js';
++import riskBadgeRoutes from './risk-badge/routes.js';
+ import settingsRoutes from './settings/routes.js';
+ import skillsRoutes from './skills/routes.js';
+ import smartDiffRoutes from './smart-diff/routes.js';
+@@ -44,6 +45,7 @@ export const modules: Record<string, FastifyPluginAsync> = {
+   pulls: pullsRoutes,
+   repoIntel: repoIntelRoutes,
+   repos: reposRoutes,
+   reviews: reviewsRoutes,
++  riskBadge: riskBadgeRoutes,
+   settings: settingsRoutes,
+   skills: skillsRoutes,
+   smartDiff: smartDiffRoutes,
+diff --git a/server/src/platform/container.ts b/server/src/platform/container.ts
+index 7e01b2c..a4f93d8 100644
+--- a/server/src/platform/container.ts
++++ b/server/src/platform/container.ts
+@@ -25,6 +25,7 @@ import { PriceBook } from './price-book.js';
+ import { ConfigError } from './errors.js';
+ import { AgentsRepository } from '../modules/agents/repository.js';
+ import { ReviewRepository } from '../modules/reviews/repository.js';
++import { RiskBadgeRepository } from '../modules/risk-badge/repository.js';
+ import type { RepoIntel } from '../modules/repo-intel/types.js';
+ import { RepoIntelService } from '../modules/repo-intel/service.js';
+ import type { FeatureModels } from '../modules/settings/types.js';
+@@ -82,6 +83,7 @@ export class Container {
+   private _codeIndex?: CodeIndex;
+   private _agentsRepo?: AgentsRepository;
+   private _reviewRepo?: ReviewRepository;
++  private _riskBadgeRepo?: RiskBadgeRepository;
+   private _repoIntel?: RepoIntel;
+   private _projectContext?: ProjectContext;
+ 
+@@ -148,6 +150,10 @@ export class Container {
+     return (this._reviewRepo ??= new ReviewRepository(this.db));
+   }
+ 
++  get riskBadgeRepository(): RiskBadgeRepository {
++    return (this._riskBadgeRepo ??= new RiskBadgeRepository(this.db));
++  }
++
+   get repoIntel(): RepoIntel {
+     return (this._repoIntel ??= this.overrides.repoIntel ?? new RepoIntelService(this));
+   }

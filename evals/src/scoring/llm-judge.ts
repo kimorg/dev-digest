@@ -21,6 +21,8 @@ export interface Verdict {
   passed: number;
   total: number;
   score: number;
+  /** Model the provider actually served for the judge call (see Result.servedModel). */
+  model?: string;
 }
 
 function parseVerdict(text: string): Verdict["results"] {
@@ -40,5 +42,5 @@ export async function llmJudge(output: string, practices: string[], model = EVAL
   const results = parseVerdict(res.text);
   const total = results.length || 1;
   const passed = results.filter((r) => r.passed).length;
-  return { results, passed, total, score: passed / total };
+  return { results, passed, total, score: passed / total, model: res.servedModel };
 }

@@ -11,15 +11,17 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { GREEN, RED, DIM, RESET } from "./ansi.js";
+import { GREEN, RED, YELLOW, DIM, RESET } from "./ansi.js";
 import { RESULTS_DIR } from "./artifacts/paths.js";
-import type { NodeAggregate, Series, Stats } from "./records/stats.js";
+import { formatModels, modelMismatch, type NodeAggregate, type RunModels, type Series, type Stats } from "./records/stats.js";
 
 interface RepeatFile {
   label: string;
   git_sha: string;
   dirty: boolean;
   times: number;
+  /** Served backend / models; absent in repeat files written before model provenance. */
+  models?: RunModels;
   tests: Record<string, NodeAggregate>;
 }
 
@@ -62,6 +64,13 @@ function main(): void {
   const b = load(labelB);
   console.log(`A = ${labelA}  sha ${a.git_sha}${a.dirty ? "-dirty" : ""}  (${a.times} runs)`);
   console.log(`B = ${labelB}  sha ${b.git_sha}${b.dirty ? "-dirty" : ""}  (${b.times} runs)`);
+  console.log(`    A models: ${formatModels(a.models)}`);
+  console.log(`    B models: ${formatModels(b.models)}`);
+  const mismatch = modelMismatch(a.models, b.models);
+  if (mismatch.length) {
+    console.log(`  ${YELLOW}warning: A and B ran on different models — the delta mixes the artifact change with a model change:${RESET}`);
+    mismatch.forEach((m) => console.log(`    ${YELLOW}- ${m}${RESET}`));
+  }
 
   const nodeids = [...new Set([...Object.keys(a.tests), ...Object.keys(b.tests)])].sort();
   for (const id of nodeids) {

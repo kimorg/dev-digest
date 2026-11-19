@@ -4,10 +4,24 @@
  * graph): config knows nothing of runtime, scoring, or the SDK.
  */
 
+// --- Backend ----------------------------------------------------------------
+// "subscription" = Claude Agent SDK on the Claude Code login; "openrouter" = OpenRouter (see env.ts).
+export const EVAL_BACKEND = process.env.EVAL_BACKEND ?? "subscription";
+const ON_OPENROUTER = EVAL_BACKEND === "openrouter";
+
 // --- Models -----------------------------------------------------------------
 // Cheap model under test by default; the judge is a stronger family to soften self-preference.
-export const EVAL_MODEL = process.env.EVAL_MODEL ?? "claude-haiku-4-5";
-export const EVAL_JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? "claude-sonnet-5";
+// Defaults are "newest of the family" aliases, and the alias format differs per backend:
+//   subscription — Agent SDK aliases "haiku" / "sonnet", resolved by the installed SDK
+//                  (0.3.327: claude-haiku-5-5 / claude-sonnet-5-5); bumping the SDK moves them.
+//   openrouter   — OpenRouter's "~anthropic/claude-*-latest" router aliases; OpenRouter rejects
+//                  "haiku" / "sonnet" ("is not a valid model ID") on both /chat/completions and
+//                  /v1/messages, while the "~" aliases are served on both.
+// Pin a full ID (EVAL_MODEL=claude-haiku-5-5, or anthropic/claude-haiku-5.5 on OpenRouter) for
+// benchmark runs that must stay comparable over time.
+export const EVAL_MODEL = process.env.EVAL_MODEL ?? (ON_OPENROUTER ? "~anthropic/claude-haiku-latest" : "haiku");
+export const EVAL_JUDGE_MODEL =
+  process.env.EVAL_JUDGE_MODEL ?? (ON_OPENROUTER ? "~anthropic/claude-sonnet-latest" : "sonnet");
 export const MAX_TURNS = Number(process.env.EVAL_MAX_TURNS ?? "8");
 
 // --- Configuration tag ------------------------------------------------------

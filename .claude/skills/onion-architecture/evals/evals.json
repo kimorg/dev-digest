@@ -1,49 +1,121 @@
-[
-  {
-    "skills": ["onion-architecture"],
-    "query": "Add an endpoint GET /repos/:id/stale-pulls that returns open PRs not updated for more than 14 days, with the number of findings on each one's latest review.",
-    "files": [],
-    "expected_behavior": [
-      "The new handler in routes.ts declares Zod params/response schemas and makes one service call; the change adds no drizzle-orm/db imports or DB calls to routes.ts (pre-existing legacy imports may stay)",
-      "Puts the query (scoped by workspace) in a repository method that implements a port declared in contract/module types (the port does not mention DB rows); the repository maps rows to those types",
-      "Keeps the 'stale after 14 days' threshold as a named domain constant/pure function and passes the cutoff into the query instead of hard-coding it in SQL",
-      "Builds the service in the module's wiring.ts with explicit narrow dependencies (no Container passed to the service) and does not add a module-local repository to platform/container.ts",
-      "Proposes a unit test for the staleness rule and a *.it.test.ts that exercises the repository query directly (not only through app.inject)"
-    ]
-  },
-  {
-    "skills": ["onion-architecture"],
-    "query": "After a review finishes I want to post a summary to Slack. Where should this code go?",
-    "files": [],
-    "expected_behavior": [
-      "Declares a port (e.g. ReviewNotifier) shaped by the use case, not by the Slack SDK, placed in the reviews module's ports.ts or src/platform/ports/ (not in the client-mirrored shared contracts)",
-      "Implements it as an adapter under src/adapters/<port>/<vendor>.ts that maps SDK/HTTP errors to ExternalServiceError",
-      "Adds a mock to src/adapters/mocks.ts and a container getter with an override slot, and reads the webhook/token through SecretsProvider (no process.env in the service)",
-      "The code that sends the notification receives the notifier (or a resolver) as an explicit dependency from wiring/constructor options, not by reading it from the Container",
-      "Calls the port from the application ring once the review run finishes, keeping message formatting as a pure function"
-    ]
-  },
-  {
-    "skills": ["onion-architecture"],
-    "query": "Review this diff: settings/routes.ts now imports { eq } from 'drizzle-orm' and updates the settings table inside the PUT handler, and AgentsService gets a new constructor argument `container: Container` for a model lookup.",
-    "files": [],
-    "expected_behavior": [
-      "Flags the route-level drizzle query as a presentation→infrastructure (layering) violation and proposes moving it behind a repository plus a service method, not a route that keeps calling the repository directly",
-      "Flags passing the whole Container as a service locator and proposes injecting a narrow dependency (e.g. a resolveLlm function or a model-catalog port)",
-      "Proposes an automated import-boundary check (e.g. dependency-cruiser against a baseline) and notes what such a check can and cannot see in this diff",
-      "Treats the pre-existing legacy violations as known, without asking to rewrite unrelated code"
-    ]
-  },
-  {
-    "skills": ["onion-architecture"],
-    "query": "Plan the new 'conventions' feature: a background job extracts coding conventions from an indexed repo with an LLM, stores them in a new conventions table, and GET /repos/:id/conventions lists them. Later an MCP tool will expose the same list. Which files change?",
-    "files": [],
-    "expected_behavior": [
-      "Keeps the feature in a new modules/conventions/ folder; outside it, touches only the module registry, the DB schema + a generated migration, and shared contracts if a shape reaches the client",
-      "Builds the service and repository in modules/conventions/wiring.ts, and registers the job handler there (or in the route plugin), not inside the service constructor and not in platform/container.ts",
-      "Uses existing container-provided adapters (LLM provider, repo-intel facade) through explicit service dependencies rather than importing other modules' files or concrete adapters",
-      "The job handler parses its payload with a schema and makes one service call; extraction rules or prompt shaping live in domain/application code, not in the handler",
-      "States that the future MCP tool reuses the same wiring builder and contains no queries or business logic"
-    ]
-  }
-]
+{
+  "skill_name": "onion-architecture",
+  "notes": "Evals 1-3: review a fixture with exactly 3 planted structural violations (listed only here) plus decoys. Evals 4-5: generative — implement a feature in a trimmed copy of the real server/src (fixtures/server-base: a clean module pr-history, a legacy module agents, container, mocks, schema); graded on the resulting diff. Runs must see only their copy of the fixture, never this file.",
+  "evals": [
+    {
+      "id": 1,
+      "name": "review-stale-pulls-module",
+      "prompt": "I've added a new `stale-pulls` module to the API server — the files are in server/src/modules/stale-pulls/. Please review it before I open a PR: what should I change and how?",
+      "files": [
+        "evals/fixtures/stale-pulls/server/src/modules/stale-pulls/"
+      ],
+      "expected_output": "A review that finds the three planted violations (DB query in a route handler, process.env read in the service, service constructing its own repository) with concrete fixes, and does not flag the type-only row import in helpers.ts.",
+      "planted": [
+        "routes.ts: GET /repos/:id/stale-pulls/count imports drizzle-orm + db schema and queries app.container.db inside the handler (also re-implements the staleness cutoff)",
+        "service.ts: reads process.env.STALE_PULL_DAYS in the constructor",
+        "service.ts: takes Db and builds `new StalePullsRepository(db)` itself (imports the repository class); wiring.ts passes container.db"
+      ],
+      "decoys": [
+        "helpers.ts: `import type { PullRow }` in a pure row → type mapper used by the repository (allowed)",
+        "domain.ts / constants.ts: pure staleness helpers (correct placement)"
+      ],
+      "assertions": [
+        "Flags the /stale-pulls/count handler in routes.ts for querying the DB directly (drizzle-orm / schema / app.container.db in the route) and proposes moving the query into the repository behind the StalePullStore port plus a service method",
+        "Flags the process.env.STALE_PULL_DAYS read in service.ts and proposes passing the value in from config through wiring.ts (constructor option) instead of reading env in the service",
+        "Flags that StalePullsService constructs its own StalePullsRepository from a Db (importing the repository class) and proposes injecting the StalePullStore port from wiring.ts",
+        "Points out that the count handler duplicates the staleness rule (its own day arithmetic / default 14) instead of reusing the domain staleCutoff function and the constant",
+        "Does not report helpers.ts importing PullRow with `import type` as a violation"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "review-slack-notifications-module",
+      "prompt": "Here's my implementation of posting a review summary to Slack when a run finishes: server/src/modules/notifications/. Does the structure hold up? Tell me what you'd fix and how the fixed version should look.",
+      "files": [
+        "evals/fixtures/review-notifications/server/src/modules/notifications/"
+      ],
+      "expected_output": "A review that finds the three planted violations (Slack SDK used directly in the service, whole Container passed to the service, another module's repository imported) with fixes that follow port → adapter → mock → container getter, and does not flag the job payload parsing in wiring.ts.",
+      "planted": [
+        "service.ts: imports `WebClient` from @slack/web-api and calls chat.postMessage directly — external I/O with no port, adapter or mock",
+        "service.ts: constructor takes `container: Container` and reads container.config.slackChannel and container.secrets (service locator)",
+        "wiring.ts + service.ts: import ReviewRepository from ../reviews/repository.js (another module's data layer, also as a type in the core)"
+      ],
+      "decoys": [
+        "wiring.ts: job handler parses its payload with Zod and makes one service call (correct)"
+      ],
+      "assertions": [
+        "Flags the direct @slack/web-api WebClient usage in service.ts and proposes a port shaped by the use case (e.g. ReviewNotifier / ChatNotifier) implemented by an adapter under src/adapters/<port>/slack.ts",
+        "Mentions adding a mock/fake for the new notifier port and a container getter with an override slot, so tests do not hit Slack",
+        "Flags passing the whole Container into NotificationsService (service locator for config.slackChannel / secrets) and proposes narrow explicit dependencies (notifier, channel value) supplied by wiring.ts",
+        "Flags importing ReviewRepository from ../reviews/repository.js (in wiring and as a type in the service) as a cross-module dependency and proposes a facade from the reviews module's types.ts resolved through the container, or a port owned by the notifications module",
+        "Does not report the Zod-parsed job handler in wiring.ts (payload parsed at the edge, one service call) as a violation"
+      ],
+      "acceptable_extra_findings": [
+        "domain.ts returns a Slack Block Kit shaped SlackMessage (vendor-shaped type in the domain); flagging it is legitimate"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "review-risk-badge-diff",
+      "prompt": "Review risk-badge.diff before I commit it (it adds a PR risk badge to the API server; the migration for the risk_badges table is in a separate commit). Anything wrong structurally?",
+      "files": [
+        "evals/fixtures/risk-badge/risk-badge.diff"
+      ],
+      "expected_output": "A review that finds the three planted violations (risk thresholds computed in SQL in the repository, FastifyReply/HTTP status handling in the service, module-local repository registered in the DI container) with concrete fixes, and does not object to the registry line.",
+      "planted": [
+        "repository.ts: the business rule (any CRITICAL → red, ≥3 WARNING → amber, else green) is a SQL CASE inside the repository",
+        "service.ts: imports FastifyReply, takes `reply` and sends a 404 itself instead of throwing an AppError subclass",
+        "platform/container.ts: registers the module-local RiskBadgeRepository as a container getter; wiring.ts reads container.riskBadgeRepository"
+      ],
+      "decoys": [
+        "modules/index.ts: one import + one entry to register the module (required footprint)"
+      ],
+      "assertions": [
+        "Flags the red/amber/green thresholds computed in the repository's SQL CASE as a business rule in infrastructure and proposes a pure domain function (with named threshold constants) while the repository returns only the counts",
+        "Flags RiskBadgeService importing FastifyReply and sending the 404 itself, and proposes throwing NotFoundError (AppError) so the shared error handler maps it and the route stays a one-call handler",
+        "Flags the platform/container.ts change that registers the module-local RiskBadgeRepository and proposes constructing it in the module's wiring.ts from container.db instead",
+        "Does not report the modules/index.ts registration (one import + one entry) as a violation",
+        "Does not ask to refactor the pre-existing AgentsRepository / ReviewRepository container entries as part of this change"
+      ],
+      "acceptable_extra_findings": [
+        "splitting computeAndSave's transaction once the level rule moves to the domain (it follows from the planted fix)"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "implement-hot-files-endpoint",
+      "kind": "generative",
+      "prompt": "Add an endpoint GET /repos/:id/hot-files to the API server: the 10 files touched by the most pull requests opened in the last 30 days, and for each file the number of CRITICAL findings reported on it across those PRs. Implement it in server/.",
+      "files": [
+        "evals/fixtures/server-base/"
+      ],
+      "expected_output": "A new self-contained module (routes → wiring → service → port → repository) registered with one line in modules/index.ts; window and limit as named domain constants; no container, schema or legacy-pattern changes.",
+      "assertions": [
+        "Puts the feature in a new module folder under server/src/modules/; outside that folder the only changed file is modules/index.ts (one import + one entry) — platform/container.ts, db/schema and other modules are untouched",
+        "The new routes.ts handler declares Zod params and response schemas, gets the workspace via getContext and makes exactly one service call; routes.ts imports nothing from drizzle-orm or db/",
+        "The SQL lives in the module's repository, which implements an interface declared in the module's ports.ts; ports.ts uses module/contract types only (no drizzle-orm, no db/schema values, no *Row types) and the query is scoped by workspaceId",
+        "The 30-day window and the top-10 limit are named constants (constants.ts or domain.ts), and the cutoff date is computed outside SQL (domain/service, with an injectable clock or `now` argument) and passed into the repository",
+        "The service is constructed in the module's wiring.ts with explicit dependencies (the port implementation, a clock); the service class does not take Container, does not import repository.ts or db/, and does not read process.env",
+        "The change does not copy the legacy pattern of the agents module (service constructed with `new XService(app.container)` or building its own repository)"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "implement-deepl-translation",
+      "kind": "generative",
+      "prompt": "Add on-demand translation of a review finding with the DeepL API: POST /findings/:id/translate with body { targetLang } returns the finding's title and rationale translated. The DeepL API key must be configurable the same way as our other API keys. Implement it in server/.",
+      "files": [
+        "evals/fixtures/server-base/"
+      ],
+      "expected_output": "A Translator port shaped by the use case, a DeepL adapter under src/adapters/, a fake in mocks.ts, a lazy container getter with an override slot reading the key through SecretsProvider, and a new module whose service receives the translator and its store explicitly from wiring.ts.",
+      "assertions": [
+        "Declares a translator port shaped by the use case (e.g. translate(texts, targetLang)) with no DeepL-specific types, in the new module's ports.ts or a server-wide ports location — and implements it in an adapter file under server/src/adapters/<name>/ (e.g. adapters/translator/deepl.ts), not inside the module folder",
+        "The adapter maps DeepL/HTTP failures to ExternalServiceError and a missing key to ConfigError (or equivalent AppError subclasses), so no raw fetch/HTTP error escapes the adapter",
+        "Adds a fake/mock translator to adapters/mocks.ts (or next to the other mocks) and a container getter for the translator with an override slot in ContainerOverrides",
+        "Reads the DeepL key through SecretsProvider (container.secrets.get(...)) in the container/adapter construction path; no process.env read for the key anywhere",
+        "The new service receives the translator (or a lazy resolver function) and its finding store as explicit constructor dependencies built in the module's wiring.ts; it does not take Container and does not import another module's repository or the concrete DeepL adapter",
+        "The route declares Zod params, body and response schemas and makes one service call; routes.ts has no drizzle-orm/db imports and no adapter imports"
+      ]
+    }
+  ]
+}

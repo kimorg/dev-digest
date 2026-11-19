@@ -9,9 +9,9 @@
 
 import { runClaude, type Result, type RunOptions } from "./run-claude.js";
 import { runOpenRouter } from "./run-openrouter.js";
+import { EVAL_BACKEND } from "../config.js";
 
-const BACKEND = process.env.EVAL_BACKEND ?? "subscription";
 
 export function runContent(prompt: string, opts: RunOptions = {}): Promise<Result> {
-  return BACKEND === "openrouter" ? runOpenRouter(prompt, opts) : runClaude(prompt, opts);
+  return EVAL_BACKEND === "openrouter" ? runOpenRouter(prompt, opts) : runClaude(prompt, opts);
 }

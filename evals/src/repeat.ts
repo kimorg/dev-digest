@@ -12,11 +12,19 @@
 
 import { mkdirSync, writeFileSync, existsSync, statSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { GREEN, RED, DIM, RESET, rateColor } from "./ansi.js";
+import { GREEN, RED, YELLOW, DIM, RESET, rateColor } from "./ansi.js";
 import { gitInfo } from "./git.js";
 import { countTests, runVitestOnce } from "./run-vitest.js";
 import { RESULTS_DIR } from "./artifacts/paths.js";
-import { aggregate, loadRecords, recordCount, type NodeAggregate, type Stats } from "./records/stats.js";
+import {
+  aggregate,
+  formatModels,
+  loadRecords,
+  modelsOf,
+  recordCount,
+  type NodeAggregate,
+  type Stats,
+} from "./records/stats.js";
 
 /**
  * vitest treats a path pattern as a SUBSTRING filter, so a bare `agents/architecture-reviewer`
@@ -114,8 +122,13 @@ async function main(): Promise<void> {
   const records = loadRecords(startLine);
   const tests = aggregate(records);
   const nodeids = Object.keys(tests).sort();
+  const models = modelsOf(records);
 
   console.log(`\n${"=".repeat(60)}\nRepeat summary (${times} runs)\n${"=".repeat(60)}`);
+  console.log(`  models: ${formatModels(models)}`);
+  if (models.task.length > 1 || models.judge.length > 1) {
+    console.log(`  ${YELLOW}warning: the series mixes models — pass rates pool different models${RESET}`);
+  }
   if (nodeids.length === 0) {
     console.log("  (no records produced — check the pattern / -t filter)");
   }
@@ -125,7 +138,7 @@ async function main(): Promise<void> {
     const git = gitInfo();
     mkdirSync(RESULTS_DIR, { recursive: true });
     const file = join(RESULTS_DIR, `repeat-${label}.json`);
-    writeFileSync(file, JSON.stringify({ label, git_sha: git.sha, dirty: git.dirty, times, vitestArgs, tests }, null, 2));
+    writeFileSync(file, JSON.stringify({ label, git_sha: git.sha, dirty: git.dirty, times, vitestArgs, models, tests }, null, 2));
     console.log(`\n${GREEN}Saved as '${label}'${RESET} -> ${file}`);
     console.log(`Compare with: pnpm eval:delta <baseline-label> ${label}`);
   }

@@ -34,6 +34,7 @@ export async function runOpenRouter(prompt: string, opts: RunOptions = {}): Prom
   let text = "";
   let inputTokens = 0;
   let outputTokens = 0;
+  let servedModel: string | undefined;
   let isError = false;
   try {
     const res = await client.chat.completions.create({
@@ -53,6 +54,7 @@ export async function runOpenRouter(prompt: string, opts: RunOptions = {}): Prom
     text = choice.message?.content ?? "";
     inputTokens = res.usage?.prompt_tokens ?? 0;
     outputTokens = res.usage?.completion_tokens ?? 0;
+    servedModel = res.model || undefined; // the slug OpenRouter routed to, e.g. "~…-latest" → "anthropic/claude-haiku-5.5"
   } catch (err) {
     isError = true;
     text = err instanceof Error ? err.message : String(err);
@@ -67,5 +69,6 @@ export async function runOpenRouter(prompt: string, opts: RunOptions = {}): Prom
     numTurns: 1,
     isError,
     metrics: { durationMs: Date.now() - started, inputTokens, outputTokens, toolCallCount: 0 },
+    servedModel,
   };
 }

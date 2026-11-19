@@ -6,8 +6,6 @@
   "description": "Evals for the DevDigest Claude Code harness (skills + subagents + workflow). vitest + Claude Agent SDK, on the Claude Code subscription — no API token, no external services.",
   "scripts": {
     "eval": "vitest run",
-    "eval:skills": "vitest run skills",
-    "eval:agents": "vitest run agents",
     "eval:workflow": "vitest run workflow",
     "eval:quality": "tsx src/skill-quality.ts",
     "eval:compare": "tsx src/compare.ts",
@@ -21,7 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.198",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.327",
     "openai": "^4.77.0"
   },
   "devDependencies": {
@@ -30,8 +28,5 @@
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
   }
 }

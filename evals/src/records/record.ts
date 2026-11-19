@@ -10,7 +10,8 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect } from "vitest";
-import { EVAL_CONFIG } from "../config.js";
+import { getCurrentTest } from "vitest/suite";
+import { EVAL_BACKEND, EVAL_CONFIG } from "../config.js";
 import { RESULTS_DIR } from "../artifacts/paths.js";
 import { gitInfo } from "../git.js";
 import type { Result } from "../runtime/run-claude.js";
@@ -58,12 +59,20 @@ export function record(label: string, data: RecordData): void {
   const outputFile = join("outputs", RUN_ID, `${slugify(label)}.md`);
   writeFileSync(join(RESULTS_DIR, outputFile), result.text);
 
+  // Model provenance: what the provider actually served, not the (possibly alias) name we asked
+  // for — an alias can move to a newer model without any repo change.
+  const models = { backend: EVAL_BACKEND, task_model: result.servedModel, judge_model: verdict?.model };
+  // Also hand it to the trend reporter (main process) via task meta → results/history.jsonl.
+  const test = getCurrentTest();
+  if (test) Object.assign(test.meta, models);
+
   const row = {
-    schema: 1,
+    schema: 2,
     run_id: RUN_ID,
     git_sha: GIT_SHA,
     dirty: DIRTY,
     config: EVAL_CONFIG,
+    ...models,
     nodeid,
     label,
     outcome,

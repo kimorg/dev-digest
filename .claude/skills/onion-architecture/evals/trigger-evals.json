@@ -1,0 +1,22 @@
+[
+  {"query": "в модулі reviews сервіс отримує весь Container і читає this.container.jobs. мені треба додати ще залежність від price book — як це зробити правильно, щоб не додавати ще один this.container.x?", "should_trigger": true},
+  {"query": "I need a background job that re-scores old findings every night (server/src/modules/reviews). where does the job handler live and who constructs the service — wiring.ts or the route plugin?", "should_trigger": true},
+  {"query": "we're adding a Linear integration: create a Linear issue from a finding with one click. which files in server/ do I need to touch? port, adapter, container, mocks… walk me through it", "should_trigger": true},
+  {"query": "can you check my branch for layering problems? I touched server/src/modules/brief/routes.ts and service.ts and I'm worried I leaked drizzle into the service", "should_trigger": true},
+  {"query": "the conventions module needs the file tree from repo-intel. can I just import RepoIntelService from ../repo-intel/service.js inside conventions/service.ts or is there a proper way?", "should_trigger": true},
+  {"query": "modules/agents/routes.ts is 180 lines with db queries inline and the service takes the container. plan a refactor so it looks like pr-history (wiring.ts, ports, repository)", "should_trigger": true},
+  {"query": "де має жити правило «PR ризиковий, якщо більше 3 critical findings» — в SQL у репозиторії, в сервісі чи окремо? це новий модуль risk у server", "should_trigger": true},
+  {"query": "set up a dependency-cruiser check for server/ so service.ts files can't import drizzle-orm or the container, and baseline the violations we already have", "should_trigger": true},
+  {"query": "I'm adding an MCP tool that lists a PR's findings. should the tool call the HTTP API or build the service itself, and where does the filtering logic go?", "should_trigger": true},
+  {"query": "new feature 'digest-emails': a weekly email with top findings per repo. scaffold server/src/modules/digest-emails — which files, what goes in each", "should_trigger": true},
+  {"query": "POST /agents returns 500 instead of 422 when the zod body validation fails. how do I set up the error handler with fastify-type-provider-zod so validation errors come back as 422?", "should_trigger": false},
+  {"query": "write a drizzle migration that adds a nullable dismissed_reason text column to findings and backfills it with 'legacy' for rows where dismissed_at is not null", "should_trigger": false},
+  {"query": "design the postgres table for per-file risk scores with history (one row per file per review run): keys, indexes, should I partition by month?", "should_trigger": false},
+  {"query": "client/src/app/repos/[repoId]/hot-files — where should the useHotFiles hook and its fetcher live, in the route's _components folder or in a shared features folder?", "should_trigger": false},
+  {"query": "this zod schema for the agent config has three nested discriminated unions and z.infer gives me a type that's basically any. how do I fix the inference?", "should_trigger": false},
+  {"query": "audit server/src/adapters/github/octokit.ts and the repo import route for SSRF — users can paste any repo URL and we clone it", "should_trigger": false},
+  {"query": "the drizzle query in modules/pulls/repository.ts that lists PRs with finding counts takes 2s on 5k PRs. how do I make it fast?", "should_trigger": false},
+  {"query": "rename ReviewRepository.getRunWithFindings to findRunWithFindings everywhere in server/ and update the tests", "should_trigger": false},
+  {"query": "pagination for GET /pulls/:id/findings: cursor or offset? what should the response envelope look like so the client can do infinite scroll?", "should_trigger": false},
+  {"query": "поясни, як працює ревʼю від POST /pulls/:id/review до того, як findings зʼявляються в базі — які класи викликаються по черзі", "should_trigger": false}
+]

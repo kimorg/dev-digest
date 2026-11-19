@@ -9,7 +9,8 @@
  * only the model inference is redirected. Select with EVAL_BACKEND=openrouter.
  */
 
-const BACKEND = process.env.EVAL_BACKEND ?? "subscription";
+import { EVAL_BACKEND } from "../config.js";
+
 
 /**
  * Copy the current env, configured for the selected inference backend.
@@ -26,7 +27,7 @@ const BACKEND = process.env.EVAL_BACKEND ?? "subscription";
 export function subscriptionEnv(): Record<string, string> {
   const env = { ...process.env } as Record<string, string>;
 
-  if (BACKEND === "openrouter") {
+  if (EVAL_BACKEND === "openrouter") {
     const key = process.env.OPENROUTER_API_KEY;
     if (!key) throw new Error("EVAL_BACKEND=openrouter but OPENROUTER_API_KEY is not set");
     env.ANTHROPIC_BASE_URL = (process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api").replace(/\/$/, "");

@@ -27,6 +27,8 @@ interface TaskLike {
   type?: string;
   name?: string;
   result?: { state?: string };
+  /** vitest TaskMeta; record() sets backend / task_model / judge_model on it in the worker. */
+  meta?: object;
   tasks?: TaskLike[];
 }
 
@@ -40,12 +42,16 @@ export default class TrendReporter {
       const state = task.result?.state;
       // Only record tests that actually ran (pass/fail) — skips add noise to the trend.
       if (state === "pass" || state === "fail") {
+        const meta = (task.meta ?? {}) as { backend?: string; task_model?: string; judge_model?: string };
         rows.push(
           JSON.stringify({
             run_id: this.runId,
             git_sha: this.sha,
             nodeid: `${file} > ${task.name ?? "?"}`,
             outcome: state,
+            backend: meta.backend,
+            task_model: meta.task_model,
+            judge_model: meta.judge_model,
           }),
         );
       }

@@ -59,7 +59,7 @@ the artifact → measured lift). All three read the same persisted `results/reco
   gate it runs first and must equal `1.0`; the judge is skipped if it fails (cheap-tier economy).
 - `llmJudge(output, practices)` — one structured `query()` → strict JSON, binary PASS/FAIL per
   practice, PASS only with a verbatim evidence quote (the LLM Message Pattern). The judge defaults
-  to a **stronger family** (`EVAL_JUDGE_MODEL=claude-sonnet-5`) than the task (`claude-haiku-4-5`)
+  to a **stronger family** (`EVAL_JUDGE_MODEL=sonnet`) than the task (`haiku`)
   to soften single-model self-preference. On a shared subscription families still overlap — the
   real mitigations are *blind + binary + verbatim evidence*.
 
@@ -71,8 +71,8 @@ differs per backend.
 
 | `EVAL_BACKEND` | Runtime | Auth | Model name format |
 |---|---|---|---|
-| `subscription` *(default)* | Claude Agent SDK on the Claude Code login | none (API key stripped) | Anthropic ID — `claude-haiku-4-5` |
-| `openrouter` | see split below | `OPENROUTER_API_KEY` | OpenRouter slug — `deepseek/deepseek-chat`, `anthropic/claude-haiku-4.5`, `google/gemini-...` |
+| `subscription` *(default)* | Claude Agent SDK on the Claude Code login | none (API key stripped) | Agent SDK alias — `haiku`, `sonnet` — or Anthropic ID — `claude-haiku-5-5` |
+| `openrouter` | see split below | `OPENROUTER_API_KEY` | OpenRouter slug — `deepseek/deepseek-chat`, `anthropic/claude-haiku-5.5`, `google/gemini-...` |
 
 **Why the backend splits by tier.** OpenRouter's native "Anthropic Skin" only serves *Anthropic*
 models, and only the Claude Agent SDK produces the subagent/skill/file-read trace the workflow tier
@@ -90,28 +90,39 @@ asserts on. So under `openrouter`:
 The default (`subscription`) path is untouched — the dispatcher only diverges when
 `EVAL_BACKEND=openrouter`.
 
-### Examples — the same `pnpm eval:skills`, three ways
+### Examples — the same `pnpm eval`, three ways
 
 ```bash
 # 1. Local, Anthropic (default — set nothing)
-pnpm eval:skills
+pnpm eval
 
 # 2. OpenRouter + DeepSeek (native, no proxy)
 EVAL_BACKEND=openrouter \
 EVAL_MODEL=deepseek/deepseek-chat \
 EVAL_JUDGE_MODEL=deepseek/deepseek-chat \
 OPENROUTER_API_KEY=sk-or-... \
-pnpm eval:skills
+pnpm eval
 
 # 3. OpenRouter, but an Anthropic model via the Skin
 EVAL_BACKEND=openrouter \
-EVAL_MODEL=anthropic/claude-haiku-4.5 \
+EVAL_MODEL=anthropic/claude-haiku-5.5 \
 OPENROUTER_API_KEY=sk-or-... \
-pnpm eval:skills
+pnpm eval
 ```
 
-> **Gotcha:** always set `EVAL_MODEL` together with `EVAL_BACKEND=openrouter` — the default
-> `claude-haiku-4-5` is an Anthropic ID and OpenRouter won't find it. Use an OpenRouter slug.
+> **Model defaults follow the backend.** With `EVAL_BACKEND=openrouter` and no `EVAL_MODEL` /
+> `EVAL_JUDGE_MODEL`, the defaults switch to OpenRouter's router aliases
+> `~anthropic/claude-haiku-latest` / `~anthropic/claude-sonnet-latest` (served on both
+> `/chat/completions` and the `/v1/messages` Skin). The `subscription` aliases `haiku` / `sonnet`
+> are rejected by OpenRouter (`haiku is not a valid model ID`), so any model you set by hand on
+> `openrouter` must be an OpenRouter slug.
+
+> **Model aliases.** On `subscription` the defaults are the Agent SDK family aliases `haiku` and
+> `sonnet`. The installed SDK resolves them to the newest model of that family it knows
+> (`@anthropic-ai/claude-agent-sdk` 0.3.327 → `claude-haiku-5-5` / `claude-sonnet-5-5`), so an SDK
+> bump silently moves the model under test. Benchmark records store the alias, not the resolved
+> ID — pin a full ID (`EVAL_MODEL=claude-haiku-5-5`) when results must stay comparable over time.
+> Anthropic model IDs have no `-latest` form; OpenRouter's equivalent is `~anthropic/claude-haiku-latest`.
 
 ### The OpenRouter engine — running EVERY tier (incl. tool tiers) on cheap models
 
@@ -228,7 +239,7 @@ jobs:
       # --- the engine ---
       - run: docker compose -f proxy/docker-compose.yml up -d   # OPENROUTER_API_KEY from job env
       - run: pnpm proxy:wait                                     # block until the proxy answers
-      - run: pnpm eval:workflow                                  # or eval:agents / eval:skills / eval
+      - run: pnpm eval:workflow                                  # or pnpm vitest run agents / skills, or pnpm eval
       - if: failure()
         run: docker compose -f proxy/docker-compose.yml logs --tail 100
       - if: always()
@@ -240,7 +251,7 @@ Notes:
 - The proxy container reads `OPENROUTER_API_KEY` straight from the job `env` (which is fed by the
   secret) — you don't pass it to `docker compose` explicitly.
 - Because tool tiers cost real tokens, gate on `paths:` (only when the harness/artifacts change) and
-  keep the case count small. For a stricter gate, split into a required `eval:agents`/`eval:skills`
+  keep the case count small. For a stricter gate, split into a required `pnpm vitest run agents skills`
   job and a non-blocking `eval:workflow` job (activation flakiness, above).
 
 ## Module layout — `src/` (the engine)
@@ -411,8 +422,8 @@ cd evals && pnpm install
 
 pnpm eval:quality        # fast static gate (no model)
 pnpm eval                # all quality + workflow evals, once
-pnpm eval:skills         # just skills/
-pnpm eval:agents         # just agents/
+pnpm vitest run skills   # just skills/ (once you've scaffolded some)
+pnpm vitest run agents   # just agents/ (once you've scaffolded some)
 pnpm eval:workflow       # just workflow/
 pnpm vitest run skills/onion-architecture       # one artifact
 pnpm vitest run src/records/stats.test.ts       # the only non-model unit test (stats math)
@@ -427,7 +438,8 @@ pnpm eval:repeat skills/onion-architecture -n 5 --label baseline
 Runs the pattern N times, then prints per-test pass rate, a per-**practice** table
 (`passed/total (pct)`), and metric stats (`turns`, `duration_ms`, `tokens_out` as mean ± stddev;
 n<5 prints an "indicative only" caveat). `--label` saves the aggregate to
-`results/repeat-<label>.json` for delta.
+`results/repeat-<label>.json` for delta, together with the served `models` (see
+[Records, statistics, flags](#records-statistics-flags)).
 
 ### `eval:delta` — version vs version (the canonical loop)
 
@@ -498,7 +510,9 @@ same raw input — the experiment stays controlled.
 
 It runs N candidate + N baseline **sequentially** (subscription rate limits) and writes
 `results/benchmarks/<timestamp>/benchmark.json` + `benchmark.md` (mean ± stddev / min / max per
-config, the delta, a per-practice matrix, and analyst flags). **Skills/agents only** — it refuses
+config, the delta, a per-practice matrix, and analyst flags). Its metadata records the served
+`backend` / `task_model` / `judge_model` next to the `requested_*` names, and `model_warnings`
+lists any model difference between candidate and baseline. **Skills/agents only** — it refuses
 `workflow/` patterns (a "no artifact" baseline is meaningless for the systemic tier, which has its
 own control-vs-treatment design).
 
@@ -508,15 +522,17 @@ own control-vs-treatment design).
 pnpm eval:compare            # last two runs from results/history.jsonl
 pnpm eval:compare --list     # list recorded runs
 ```
-Cheap and orthogonal; the `TrendReporter` keeps writing test-level outcome rows on every run.
+Cheap and orthogonal; the `TrendReporter` keeps writing test-level outcome rows (with the served
+models) on every plain `vitest` / `pnpm eval*` run — not on `eval:repeat` / `eval:benchmark` runs,
+which spawn vitest with `--reporter=dot`. "Same git sha → noise" is only claimed when the models match too.
 
 ### Environment variables
 
 | Env var | Default | Meaning |
 |---------|---------|---------|
 | `EVAL_BACKEND` | `subscription` | runner: `subscription` (Claude Code) or `openrouter` — see [Runners](#runners-claude-code-default-vs-openrouter) |
-| `EVAL_MODEL` | `claude-haiku-4-5` | model under test. Anthropic ID on `subscription`; OpenRouter slug on `openrouter` |
-| `EVAL_JUDGE_MODEL` | `claude-sonnet-5` | judge model (stronger family); same slug-format rule as `EVAL_MODEL` |
+| `EVAL_MODEL` | `haiku` (`~anthropic/claude-haiku-latest` on `openrouter`) | model under test. Agent SDK alias or Anthropic ID on `subscription`; OpenRouter slug on `openrouter` |
+| `EVAL_JUDGE_MODEL` | `sonnet` (`~anthropic/claude-sonnet-latest` on `openrouter`) | judge model (stronger family); same slug-format rule as `EVAL_MODEL` |
 | `OPENROUTER_API_KEY` | — | required when `EVAL_BACKEND=openrouter`; also in `~/.devdigest/secrets.json` |
 | `OPENROUTER_BASE_URL` | OpenRouter | override to point at a local LiteLLM proxy for non-Anthropic tool-tier models |
 | `EVAL_MAX_TURNS` | `8` | max agent turns per case |
@@ -529,10 +545,11 @@ Every run appends one line to `results/records.jsonl` and the full model output 
 `results/outputs/<run_id>/<slug>.md`. `results/` is gitignored and append-only — **deleting
 `results/` is always safe**.
 
-Record schema (`schema: 1`):
+Record schema (`schema: 2`; `schema: 1` rows lack the three model fields):
 
 ```jsonc
-{ "schema": 1, "run_id": "...", "git_sha": "...", "dirty": false, "config": "candidate",
+{ "schema": 2, "run_id": "...", "git_sha": "...", "dirty": false, "config": "candidate",
+  "backend": "subscription", "task_model": "claude-haiku-5-5", "judge_model": "claude-sonnet-5-5",
   "nodeid": "…/onion-architecture.eval.ts > skill:onion-architecture > review flags ...", "label": "...",
   "outcome": true, "score": 0.8, "threshold": 0.6,
   "practices": [ { "practice": "...", "passed": true, "evidence": "verbatim quote" } ],
@@ -542,6 +559,19 @@ Record schema (`schema: 1`):
 ```
 
 Statistics semantics:
+
+- **Models are the ones the provider served**, not the names requested: `task_model` is the
+  `message.model` of the first main-thread assistant message (Agent SDK; subagent messages and the
+  CLI's `<synthetic>` error notices are skipped) or the `model` field of the OpenRouter response;
+  `judge_model` is the same for the judge call (absent when no judge ran). An alias such as `haiku`
+  or `~anthropic/claude-haiku-latest` can move to a newer model with no repo change, so
+  `eval:repeat` saves the served `models` in `repeat-<label>.json`, `history.jsonl` rows carry
+  them too (via vitest task meta), and `eval:delta` / `eval:compare` / `eval:benchmark` print them
+  and **warn when the two sides differ** (backend, task model or judge model). Series from
+  `subscription` and `openrouter` always differ — the slug formats differ
+  (`claude-haiku-5-5` vs `anthropic/claude-haiku-5.5`). Files written before this have no models
+  and are reported as `not recorded`. Token counts are not comparable across model generations
+  (tokenizer and default thinking change), so treat a model warning as "don't read the delta".
 
 - **Sample stddev** (n−1). n<5 is indicative only — the tools say so.
 - **Practice identity is the practice text.** Reword a practice and you start a new statistics

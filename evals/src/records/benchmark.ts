@@ -22,7 +22,10 @@ import {
   byConfig,
   calcStats,
   computeFlags,
+  formatModels,
   loadRecords,
+  modelMismatch,
+  modelsOf,
   recordCount,
   type EvalRecord,
   type Flag,
@@ -110,6 +113,9 @@ async function main(): Promise<void> {
   const baseAgg = aggregate(base);
   const candSum = summarize(cand);
   const baseSum = summarize(base);
+  // Served models: the lift is only meaningful when both configs ran on the same models.
+  const models = modelsOf([...cand, ...base]);
+  const modelWarnings = modelMismatch(modelsOf(cand), modelsOf(base));
 
   const git = gitInfo();
   const timestamp = new Date().toISOString();
@@ -135,8 +141,14 @@ async function main(): Promise<void> {
   const report = {
     metadata: {
       pattern: vitestArgs.join(" "),
-      task_model: EVAL_MODEL,
-      judge_model: EVAL_JUDGE_MODEL,
+      backend: models.backend.join(", ") || null,
+      // Served by the provider (an alias like "haiku" resolves to a concrete id); the requested
+      // name is kept alongside. Comma-joined when the run mixed models (see model_warnings).
+      task_model: models.task.join(", ") || null,
+      judge_model: models.judge.join(", ") || null,
+      requested_task_model: EVAL_MODEL,
+      requested_judge_model: EVAL_JUDGE_MODEL,
+      model_warnings: modelWarnings,
       runs_per_configuration: times,
       git_sha: git.sha,
       dirty: git.dirty,
@@ -170,7 +182,13 @@ async function main(): Promise<void> {
   };
   const W = 18;
   console.log(`\n${"=".repeat(64)}\nBenchmark: ${vitestArgs.join(" ")}  (${times} runs/config)\n${"=".repeat(64)}`);
-  console.log(`  ${GREEN}candidate${RESET} = with artifact   ${YELLOW}baseline${RESET} = raw model   Δ = candidate − baseline\n`);
+  console.log(`  ${GREEN}candidate${RESET} = with artifact   ${YELLOW}baseline${RESET} = raw model   Δ = candidate − baseline`);
+  console.log(`  models: ${formatModels(models)}\n`);
+  if (modelWarnings.length) {
+    console.log(`  ${YELLOW}warning: candidate and baseline ran on different models — the lift is not like-for-like:${RESET}`);
+    modelWarnings.forEach((m) => console.log(`    ${YELLOW}- ${m}${RESET}`));
+    console.log("");
+  }
   console.log(`  ${"metric".padEnd(12)}${"candidate".padEnd(W)}${"baseline".padEnd(W)}Δ`);
   console.log(
     `  ${"pass_rate".padEnd(12)}${pct(candSum.pass_rate).padEnd(W)}${pct(baseSum.pass_rate).padEnd(W)}${dPct(candSum.pass_rate, baseSum.pass_rate)}`,
@@ -226,10 +244,13 @@ function renderMarkdown(
   lines.push(`# Benchmark — ${r.metadata.pattern}`);
   lines.push("");
   lines.push(
-    `Task model \`${r.metadata.task_model}\` · judge \`${r.metadata.judge_model}\` · ` +
+    `Backend \`${r.metadata.backend ?? "?"}\` · task model \`${r.metadata.task_model ?? r.metadata.requested_task_model}\` · ` +
+      `judge \`${r.metadata.judge_model ?? r.metadata.requested_judge_model}\` · ` +
       `${r.metadata.runs_per_configuration} runs/config · sha \`${r.metadata.git_sha}${r.metadata.dirty ? "-dirty" : ""}\` · ${r.metadata.timestamp}`,
   );
   lines.push("");
+  for (const w of r.metadata.model_warnings as string[]) lines.push(`> **Warning:** models differ between configs — ${w}`);
+  if (r.metadata.model_warnings.length) lines.push("");
   lines.push("## Summary (per configuration)");
   lines.push("");
   lines.push("| metric | candidate | baseline |");
