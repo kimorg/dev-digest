@@ -192,10 +192,10 @@ workflow cases:
    model invokes the Skill tool, so it passes.)
 
 > **Isolation note.** `workflowTask` runs with `settingSources:["project"]` + `bypassPermissions`
-> against the live repo. A model that decides to `Write` can touch real files (e.g. your local
-> memory dir) even though `WORKFLOW_ALLOWED_TOOLS` is a read-only list. In CI this is harmless (the
-> checkout is disposable); locally, prefer the Anthropic path or a throwaway clone for the workflow
-> tier.
+> against the live repo. The read-only `WORKFLOW_ALLOWED_TOOLS` is enforced as the SDK's `tools`
+> (not only `allowedTools`, which merely pre-approves), `WORKFLOW_DENIED_TOOLS` and every MCP tool
+> are removed — so neither the session nor a subagent it spawns can write, run shell or reach a
+> connector. See [Safety](#safety).
 
 ### Wiring it into GitHub Actions (per-PR)
 
@@ -411,6 +411,11 @@ How each `kind` asserts:
 | `dispatch` | `workflowTask` | `result.subagents` contains `expectSubagent` |
 | `activation` | `workflowTask` | `activated(result, skill) === shouldActivate` (positive **and** near-miss negative) |
 | `contrast` | treatment (real repo) **and** control (empty tmpdir, `settingSources:[]`) | `expectFileRead` read in treatment, NOT in control |
+| `trace` | one `workflowTask` | every given `expectSubagents` / `expectSkills` / `expectFilesRead` holds and **no** `avoidFilesRead` path was read; stops early once the evidence is in (with `avoidFilesRead`: only on a forbidden read) |
+
+Reads are `Read` tool calls only (Grep/Glob paths don't count). Assert on the doc a package map
+*routes to*, not on the map itself: a nested `CLAUDE.md` / `AGENTS.md` is auto-loaded by Claude
+Code, so an explicit `Read` of it appears only in some runs.
 
 Workflow records carry an empty `practices[]` (no judge) but a full trace; `contrast` writes two
 records — `<label>:treatment` and `<label>:control`.
@@ -601,9 +606,25 @@ tokens > 125% of baseline), `missing_data` (a config has zero records for a test
 
 ## Safety
 
-Sessions run with `permissionMode: "bypassPermissions"`, so `workflowTask` keeps a **read-only
-allow-list** (`Read, Grep, Glob, Task, Agent, Skill` — no `Bash`/`Write`/`Edit`). Don't copy the
-bypass pattern into a context that grants write tools.
+Sessions run with `permissionMode: "bypassPermissions"`, so what a session *can* call is fenced
+in `runClaude`, not left to approval:
+
+- **`allowedTools` only pre-approves** in the Agent SDK — on its own it leaves every other
+  built-in (`Write`, `Edit`, `Bash`…) usable under bypass. `runClaude` therefore passes the
+  allow-list as `tools` (the base set the model sees); `[]` means no tools at all (content tier).
+  `Task` maps to `Agent`. `Skill` stays in `tools` (the SDK calls that deprecated) *and* sets
+  `skills: "all"`: the option alone does not bring the Skill tool back once `tools` is restricted
+  — the model then only "activates" a skill by reading its `SKILL.md`.
+- `workflowTask` adds `disallowedTools: WORKFLOW_DENIED_TOOLS` (`Write, Edit, NotebookEdit, Bash,
+  PowerShell`). Subagents it spawns inherit the fence (verified: a `general-purpose` subagent gets
+  "No such tool available" on `Write`/`Bash`).
+- Every run also denies `mcp__*` unless its allow-list names an MCP tool: project `.mcp.json`
+  servers and the account's claude.ai connectors (Drive, GitHub…) are not governed by `tools`
+  and would otherwise run outward-facing actions unasked.
+
+Besides safety this keeps the trace honest: with `Write` available, a model "records an insight"
+by editing `INSIGHTS.md` itself instead of activating the skill (a false miss) and changes the
+input of the next run. Don't copy the bypass pattern into a context that grants write tools.
 
 ## Deferred (recorded so it isn't rediscovered)
 

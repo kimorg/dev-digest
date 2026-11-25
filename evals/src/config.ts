@@ -39,7 +39,11 @@ export const COST_REGRESSION_RATIO = 1.25; // candidate mean tokens > 125% of ba
 // Subagent-spawning tool name varies by harness; count both.
 export const SPAWN_TOOLS = new Set(["Task", "Agent"]);
 // workflowTask runs against the LIVE repo with bypassPermissions — keep this read-only.
+// runClaude passes the list as the SDK's `tools` (the base set the model can see), not only as
+// `allowedTools`: allowedTools merely auto-approves, so on its own it left Write/Edit/Bash usable.
 export const WORKFLOW_ALLOWED_TOOLS = ["Read", "Grep", "Glob", "Task", "Agent", "Skill"];
+// Second fence for the workflow tier: removed from the context even if a setting re-enables them.
+export const WORKFLOW_DENIED_TOOLS = ["Write", "Edit", "NotebookEdit", "Bash", "PowerShell"];
 
 // --- Output verbosity -------------------------------------------------------
 // Set EVAL_QUIET to suppress per-run trace/verdict spam during multi-run aggregation.

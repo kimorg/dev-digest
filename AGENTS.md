@@ -80,4 +80,6 @@ Package maps: [server](server/AGENTS.md) · [client](client/AGENTS.md) ·
 - Root `docs/agent-prompts/` — reviewer system-prompt library (General, Security, Performance).
 - Root `docs/retro/ledger/` — append-only `/workflow-retro` records of multi-agent runs and
   per-agent / per-skill observations and proposals ([format](docs/retro/ledger/README.md)).
+- Root `docs/deps/` — dated dependency reports from the `dependencies-checker` skill (map, sizes,
+  findings, prioritised plan).
 - Root `docs/plans/` — approved Development Plans (`NNN-<slug>.md`) from `implementation-planner` (built from an approved spec in `specs/` or `<package>/specs/`), executed by the `/run-plan` skill: `implementer` (code) → `test-writer` (tests from the spec) ∥ reviewers → fix loop. `plan-verifier` is run manually afterwards.

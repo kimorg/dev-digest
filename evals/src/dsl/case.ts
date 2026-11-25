@@ -65,6 +65,13 @@ export type WorkflowCase =
       expectSubagents?: string[];
       expectSkills?: string[];
       expectFilesRead?: string[];
+      /**
+       * Files that must NOT be read (path substrings) — the negative half of a routing rule, e.g.
+       * "read THIS package's INSIGHTS.md, not another's". Without it a model that reads everything
+       * passes. Setting it disables the early stop on success: the session runs to its natural end
+       * (or stops at the first forbidden read), so give the case enough maxTurns to finish.
+       */
+      avoidFilesRead?: string[];
       maxTurns?: number;
     };
 
@@ -149,15 +156,20 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
         const subs = c.expectSubagents ?? [];
         const skls = c.expectSkills ?? [];
         const files = c.expectFilesRead ?? [];
+        const avoid = c.avoidFilesRead ?? [];
         const skillEngaged = (p: { skillsInvoked: string[]; filesRead: string[] }, skill: string) =>
           p.skillsInvoked.some((s) => s === skill || s.endsWith(`:${skill}`)) ||
           p.filesRead.some((f) => f.includes(`skills/${skill}/SKILL.md`));
         const result = await workflowTask(c.prompt, {
           maxTurns: c.maxTurns,
+          // With an avoid-list, stopping at the first success would hide a forbidden read that comes
+          // after it — so stop only once the case has already failed (a forbidden read).
           stopWhen: (p) =>
-            subs.every((s) => p.subagents.includes(s)) &&
-            skls.every((s) => skillEngaged(p, s)) &&
-            files.every((f) => p.filesRead.some((r) => r.includes(f))),
+            avoid.length > 0
+              ? avoid.some((f) => p.filesRead.some((r) => r.includes(f)))
+              : subs.every((s) => p.subagents.includes(s)) &&
+                skls.every((s) => skillEngaged(p, s)) &&
+                files.every((f) => p.filesRead.some((r) => r.includes(f))),
         });
         logTrace(c.name, result);
         try {
@@ -175,6 +187,12 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
               result.filesRead.some((f) => f.includes(file)),
               `${file} not read | reads: ${result.filesRead.join(", ")}`,
             ).toBe(true);
+          }
+          for (const file of avoid) {
+            expect(
+              result.filesRead.some((f) => f.includes(file)),
+              `${file} must NOT be read | reads: ${result.filesRead.join(", ")}`,
+            ).toBe(false);
           }
           expect(result.isError).toBe(false);
         } finally {

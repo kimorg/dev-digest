@@ -3,7 +3,7 @@
  * extracts what the session ACTUALLY did (tools, subagents, skills, reads) — not its prose.
  */
 
-import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
+import { BUILTIN_TOOL_NAMES, query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { EVAL_MODEL, MAX_TURNS, SPAWN_TOOLS } from "../config.js";
 import { REPO_ROOT } from "../artifacts/paths.js";
 import { subscriptionEnv } from "./env.js";
@@ -36,7 +36,14 @@ export interface Result {
 
 export interface RunOptions {
   systemPrompt?: string;
+  /**
+   * The tools the session may use — enforced, not just pre-approved: it becomes the SDK's `tools`
+   * (the base set the model sees) and `allowedTools` (no prompts). `[]` = no tools at all.
+   * "Skill" turns on the project's skills via the SDK `skills` option.
+   */
   allowedTools?: string[];
+  /** Removed from the model's context outright (SDK `disallowedTools`), whatever else allows them. */
+  disallowedTools?: string[];
   maxTurns?: number;
   cwd?: string;
   model?: string;
@@ -65,12 +72,30 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     systemPrompt = (systemPrompt ?? "") + directive;
   }
 
+  // `allowedTools` alone only auto-approves; under bypassPermissions every other built-in tool
+  // (Write, Edit, Bash…) stays usable. `tools` is what restricts the set the model can call.
+  // "Task" is the older name of "Agent" (not a built-in name any more), so it is mapped. "Skill"
+  // must stay in `tools` even though the SDK calls that deprecated: `skills: "all"` alone does not
+  // bring the Skill tool back once `tools` is restricted (verified — the model only had Read).
+  const builtins = new Set<string>(BUILTIN_TOOL_NAMES);
+  const baseTools = allowedTools.filter((t) => builtins.has(t));
+  if (allowedTools.includes("Task") && !baseTools.includes("Agent")) baseTools.push("Agent");
+  // `tools` governs built-ins only: MCP servers (project .mcp.json, the account's claude.ai
+  // connectors — Drive, GitHub, Docs…) still reach the model, and under bypassPermissions they run
+  // unasked, outward-facing. Fence them off unless the run's allow-list names an MCP tool itself.
+  const disallowedTools = [...(opts.disallowedTools ?? [])];
+  if (!allowedTools.some((t) => t.startsWith("mcp__"))) disallowedTools.push("mcp__*");
+
   const options: Options = {
     model: opts.model ?? EVAL_MODEL,
     maxTurns: opts.maxTurns ?? MAX_TURNS,
-    permissionMode: "bypassPermissions", // safe: evals only read/plan and tools are allow-listed
+    // Safe only because `tools` below restricts the session to the allow-list.
+    permissionMode: "bypassPermissions",
     systemPrompt,
+    tools: baseTools,
     allowedTools,
+    ...(allowedTools.includes("Skill") ? { skills: "all" as const } : {}),
+    disallowedTools,
     cwd: opts.cwd ?? REPO_ROOT,
     // Default: do NOT load on-disk config — isolates the injected artifact. workflowTask overrides.
     settingSources: opts.settingSources ?? [],
