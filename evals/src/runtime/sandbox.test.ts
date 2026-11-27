@@ -53,6 +53,9 @@ describe("outsidePath", () => {
     expect(outsidePath(root, "Glob", { pattern: "/home/**/AGENTS.md" })).toBeDefined();
     expect(outsidePath(root, "Glob", { pattern: "../**/*.md" })).toBe("../**/*.md");
     expect(outsidePath(root, "Glob", { pattern: "{docs,../outside}/*.md" })).toBe("{docs,../outside}/*.md");
+    expect(outsidePath(root, "Glob", { pattern: "{docs,/etc}/*" })).toBe("{docs,/etc}/*");
+    expect(outsidePath(root, "Glob", { pattern: "{/etc,docs}/*" })).toBe("{/etc,docs}/*");
+    expect(outsidePath(root, "Glob", { pattern: "{docs,src}/**/*.md" })).toBeUndefined();
     expect(outsidePath(root, "Glob", { pattern: "*.md", path: outside })).toBe(outside);
   });
 

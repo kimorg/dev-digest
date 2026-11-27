@@ -55,7 +55,9 @@ export function alignResults(raw: unknown[], practices: string[]): Verdict["resu
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
     const r = item as { id?: unknown; practice?: unknown; passed?: unknown; evidence?: unknown };
-    const id = typeof r.id === "number" ? r.id : typeof r.id === "string" ? Number(r.id) : NaN;
+    // Number("") is 0, so a blank string id must not be coerced — it falls back to the text.
+    const id =
+      typeof r.id === "number" ? r.id : typeof r.id === "string" && r.id.trim() !== "" ? Number(r.id) : NaN;
     const index = Number.isInteger(id) ? id - 1 : practices.indexOf(String(r.practice ?? ""));
     if (index < 0 || index >= practices.length || byIndex.has(index)) continue;
     byIndex.set(index, r);

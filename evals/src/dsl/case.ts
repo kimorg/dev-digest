@@ -215,9 +215,13 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
         // case file. Each session is fenced to its snapshot (sandbox.ts) — an empty-tmpdir control
         // used to Grep /tmp, find the repo path and Read the real repo.
         const tools = c.tools ?? ["Read", "Grep", "Glob"];
-        const full = makeSnapshot({ stripHarness: false });
-        const bare = makeSnapshot({ stripHarness: true });
+        // Created inside the try, so a failing second copy does not leak the first.
+        const snapshots: string[] = [];
         try {
+          const full = makeSnapshot({ stripHarness: false });
+          snapshots.push(full);
+          const bare = makeSnapshot({ stripHarness: true });
+          snapshots.push(bare);
           const treatment = await workflowTask(c.prompt, {
             allowedTools: tools,
             maxTurns: c.maxTurns,
@@ -247,8 +251,7 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
             record(`${c.name} [control]`, { result: control, outcome: passed });
           }
         } finally {
-          rmSync(full, { recursive: true, force: true });
-          rmSync(bare, { recursive: true, force: true });
+          for (const dir of snapshots) rmSync(dir, { recursive: true, force: true });
         }
       }
     });

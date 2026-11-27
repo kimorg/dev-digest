@@ -8,11 +8,11 @@
  * the control runs with settingSources: [] and would never load one from disk.
  */
 
-import { cpSync, existsSync, mkdirSync, mkdtempSync, realpathSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import type { HookCallbackMatcher, PreToolUseHookInput } from "@anthropic-ai/claude-agent-sdk";
+import type { HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
 import { REPO_ROOT } from "../artifacts/paths.js";
 import { HARNESS_BASENAMES, HARNESS_PREFIXES, SNAPSHOT_EXCLUDE } from "../config.js";
 
@@ -45,6 +45,9 @@ export function isInside(root: string, p: string): boolean {
 /** A `..` segment anywhere in a glob, including inside braces: `{a,../b}`. */
 const DOTDOT_SEGMENT = /(^|[\\/{,])\.\.([\\/},]|$)/;
 
+/** An absolute alternative inside braces: `{docs,/etc}/*` (resolve() would keep it under root). */
+const BRACE_ABSOLUTE = /[{,][\\/]/;
+
 /**
  * The first path a Read / Grep / Glob call would reach outside `root`, or undefined when it stays
  * inside. Grep's `pattern` is a regex (not a path); Glob's is resolved against its `path`.
@@ -59,10 +62,14 @@ export function outsidePath(root: string, toolName: string, input: Record<string
   if (path) targets.push(path);
   const pattern = str(input.pattern);
   if (toolName === "Glob" && pattern) {
-    if (DOTDOT_SEGMENT.test(pattern)) return pattern;
+    if (DOTDOT_SEGMENT.test(pattern) || BRACE_ABSOLUTE.test(pattern)) return pattern;
     targets.push(resolve(path ? resolve(root, path) : root, pattern));
   }
   return targets.find((t) => !isInside(root, t));
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 /**
@@ -75,8 +82,14 @@ export function confineHook(root: string): HookCallbackMatcher {
     onFailure: "block",
     hooks: [
       async (input) => {
-        const { tool_name, tool_input } = input as PreToolUseHookInput;
-        const outside = outsidePath(root, tool_name, (tool_input ?? {}) as Record<string, unknown>);
+        if (input.hook_event_name !== "PreToolUse") return {};
+        const { tool_name, tool_input } = input;
+        // Fail closed: an input the fence cannot read is denied, never waved through.
+        const outside = isRecord(tool_input)
+          ? outsidePath(root, tool_name, tool_input)
+          : CONFINED_TOOLS.includes(tool_name)
+            ? `unreadable ${tool_name} input`
+            : undefined;
         if (!outside) return {};
         return {
           hookSpecificOutput: {
@@ -102,21 +115,26 @@ export function isHarnessPath(rel: string): boolean {
  */
 export function makeSnapshot({ stripHarness }: { stripHarness: boolean }): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), stripHarness ? "eval-snap-bare-" : "eval-snap-full-")));
-  const files = execFileSync("git", ["ls-files", "-z", "-co", "--exclude-standard"], {
-    cwd: REPO_ROOT,
-    maxBuffer: 64 * 1024 * 1024,
-  })
-    .toString("utf8")
-    .split("\0")
-    .filter(Boolean);
-  for (const rel of new Set(files)) {
-    if (SNAPSHOT_EXCLUDE.some((p) => rel.startsWith(p))) continue;
-    if (stripHarness && isHarnessPath(rel)) continue;
-    const src = join(REPO_ROOT, rel);
-    if (!existsSync(src)) continue; // deleted in the working tree but still in the index
-    const dst = join(dir, rel);
-    mkdirSync(dirname(dst), { recursive: true });
-    cpSync(src, dst); // a symlink is copied as a link; the hook follows it and judges its target
+  try {
+    const files = execFileSync("git", ["ls-files", "-z", "-co", "--exclude-standard"], {
+      cwd: REPO_ROOT,
+      maxBuffer: 64 * 1024 * 1024,
+    })
+      .toString("utf8")
+      .split("\0")
+      .filter(Boolean);
+    for (const rel of new Set(files)) {
+      if (SNAPSHOT_EXCLUDE.some((p) => rel.startsWith(p))) continue;
+      if (stripHarness && isHarnessPath(rel)) continue;
+      const src = join(REPO_ROOT, rel);
+      if (!existsSync(src)) continue; // deleted in the working tree but still in the index
+      const dst = join(dir, rel);
+      mkdirSync(dirname(dst), { recursive: true });
+      cpSync(src, dst); // a symlink is copied as a link; the hook follows it and judges its target
+    }
+    return dir;
+  } catch (e) {
+    rmSync(dir, { recursive: true, force: true }); // a half-made copy is the caller's leak otherwise
+    throw e;
   }
-  return dir;
 }

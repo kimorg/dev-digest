@@ -30,6 +30,11 @@ describe("alignResults — practice identity", () => {
     expect(alignResults([{ id: "2", passed: true, evidence: "Verdict: BLOCKED" }], PRACTICES)[1].passed).toBe(true);
   });
 
+  test("a blank string id is not read as 0 — it falls back to the practice text", () => {
+    const raw = [{ id: " ", practice: PRACTICES[0], passed: true, evidence: "blank id" }];
+    expect(alignResults(raw, PRACTICES)[0]).toEqual({ practice: PRACTICES[0], passed: true, evidence: "blank id" });
+  });
+
   test("falls back to an exact copy of the practice text when there is no id", () => {
     const raw = [{ practice: PRACTICES[2], passed: true, evidence: "x" }];
     expect(alignResults(raw, PRACTICES)[2]).toEqual({ practice: PRACTICES[2], passed: true, evidence: "x" });

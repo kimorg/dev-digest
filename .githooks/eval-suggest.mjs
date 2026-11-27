@@ -5,8 +5,9 @@
 //   eval-suggest.mjs files <path>…   manual check of the mapping for the given paths
 // Mapping mirrors the "Which change → which eval run" table in the root AGENTS.md — keep them in sync.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join, basename } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const ZERO_SHA = /^0+$/;
 const err = (s) => process.stderr.write(s + '\n');
@@ -93,7 +94,15 @@ export function render({ skills, agents, instructions }, hasEvals, mode) {
   return out.join('\n');
 }
 
-const isMain = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
+// realpath + pathToFileURL: Node resolves the main module through symlinks and percent-encodes
+// `#` / `?`, so a hand-built `file://` URL would not match and the hook would print nothing.
+const isMain = (() => {
+  try {
+    return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+  } catch {
+    return false;
+  }
+})();
 if (isMain) {
   try {
     const [mode, ...rest] = process.argv.slice(2);
