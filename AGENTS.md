@@ -25,6 +25,43 @@ Package maps: [server](server/AGENTS.md) · [client](client/AGENTS.md) ·
 - Tests are per package — see [TESTING.md](TESTING.md) for the suite map and CI lanes.
 - PR self-review hooks, once per clone: `git config core.hooksPath .githooks` (`dev.sh` does it).
 - Requires Node ≥ 22, pnpm ≥ 10, Docker.
+- Harness evals (`.claude/skills`, `.claude/agents`, `CLAUDE.md`/`AGENTS.md`) live in `evals/`
+  (pnpm; `cd evals && pnpm install` once). Full reference: [evals/README.md](evals/README.md).
+
+  ```bash
+  cd evals
+  pnpm eval:quality    # static SKILL.md gate — structure, frontmatter, links (no model, free)
+  pnpm eval:skills     # LLM-judged skill evals          (evals/skills/*)
+  pnpm eval:agents     # LLM-judged subagent evals       (evals/agents/*)
+  pnpm eval:workflow   # trace-asserted harness evals    (evals/workflow/*)
+  pnpm vitest run skills/<name>   # one skill (or agents/<name> for one agent)
+  ```
+
+  All model-backed runs use the Claude Code subscription (API key stripped); set
+  `EVAL_BACKEND=openrouter` to run the same cases on cheap models.
+
+### Which change → which eval run
+
+| Change                                           | Run (from `evals/`)                                          |
+|--------------------------------------------------|--------------------------------------------------------------|
+| `.claude/skills/<skill>/**` (any skill file)     | `pnpm eval:quality` + `pnpm eval:skills`                     |
+| `.claude/agents/<agent>.md`                      | `pnpm eval:agents`                                           |
+| `AGENTS.md` / `CLAUDE.md` (root or package)      | `pnpm eval:workflow`                                         |
+| One skill / agent — quick check                  | `pnpm vitest run skills/<skill>` · `pnpm vitest run agents/<agent>` |
+| A skill edit you want to **measure**             | `eval:repeat … --label baseline` → edit → `--label candidate` → `eval:delta` |
+| New skill / agent — worth its tokens?            | `pnpm eval:benchmark skills/<skill> -n 5`                    |
+| Model or Claude Code version bump                | `pnpm eval` (whole suite)                                    |
+| `evals/src/**` (engine, stats, judge parsing)    | `pnpm vitest run src` + `pnpm typecheck`                     |
+
+**Eval suggestion hook.** `post-commit` (files of the new commit) and `pre-push` (files of all
+outgoing commits) run `.githooks/eval-suggest.mjs`: when they touch the paths in the first three
+rows, it prints those commands, plus `pnpm eval:scaffold <name>` for artifacts that have no evals
+yet. It is a recommendation, never a gate — it always exits 0, and model-backed evals spend
+subscription usage, so running them is the user's call. The script holds its own copy of the
+mapping: change it together with this table.
+An agent that commits or pushes relays a printed `ℹ eval suggestion` block to the user in its
+final answer (hook output lands in the agent's tool result, not in the user's terminal) and runs
+the evals only if the user asks.
 
 ## Gotchas
 

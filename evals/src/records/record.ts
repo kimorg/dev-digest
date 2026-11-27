@@ -32,6 +32,12 @@ export interface RecordData {
   verdict?: Verdict;
   grounded?: number;
   threshold?: number;
+  /**
+   * The case's real verdict, when the runner asserts on the trace rather than on a judge score
+   * (workflow dispatch / activation / trace / contrast). Without it the outcome falls back to
+   * "the run did not error", which marked every failed activation as a pass in records.jsonl.
+   */
+  outcome?: boolean;
   extra?: Record<string, unknown>;
 }
 
@@ -45,14 +51,16 @@ export function record(label: string, data: RecordData): void {
   const state = expect.getState();
   const nodeid = `${state.testPath ?? "?"} > ${state.currentTestName ?? label}`;
 
-  // outcome: grounding gate failure short-circuits to false; else the judge threshold; else
-  // "did the run itself succeed" (workflow tests have neither grounding nor a judge verdict).
+  // outcome: an explicit verdict from the runner wins; else a grounding gate failure
+  // short-circuits to false; else the judge threshold; else "did the run itself succeed".
   const outcome =
-    grounded !== undefined && grounded < 1
-      ? false
-      : verdict && threshold !== undefined
-        ? verdict.score >= threshold
-        : !result.isError;
+    data.outcome !== undefined
+      ? data.outcome
+      : grounded !== undefined && grounded < 1
+        ? false
+        : verdict && threshold !== undefined
+          ? verdict.score >= threshold
+          : !result.isError;
 
   const outDir = join(OUTPUTS, RUN_ID);
   mkdirSync(outDir, { recursive: true });
@@ -87,6 +95,7 @@ export function record(label: string, data: RecordData): void {
       subagents: result.subagents,
       skills: result.skillsInvoked,
       reads: result.filesRead,
+      escapes: result.escapeAttempts,
     },
     output_file: outputFile,
     ...extra,

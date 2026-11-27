@@ -7,6 +7,7 @@ import { BUILTIN_TOOL_NAMES, query, type Options } from "@anthropic-ai/claude-ag
 import { EVAL_MODEL, MAX_TURNS, SPAWN_TOOLS } from "../config.js";
 import { REPO_ROOT } from "../artifacts/paths.js";
 import { subscriptionEnv } from "./env.js";
+import { confineHook, outsidePath } from "./sandbox.js";
 
 export interface Metrics {
   durationMs: number;
@@ -23,6 +24,11 @@ export interface Result {
   /** Skills activated via the Skill tool (workflow mode); name may be "plugin:skill". */
   skillsInvoked: string[];
   filesRead: string[];
+  /**
+   * Read / Grep / Glob targets outside `confineTo` — denied by the hook, so NOT in `filesRead`.
+   * Always [] for a run without `confineTo`.
+   */
+  escapeAttempts: string[];
   numTurns: number;
   isError: boolean;
   metrics: Metrics;
@@ -49,6 +55,11 @@ export interface RunOptions {
   model?: string;
   /** ["project"] loads on-disk CLAUDE.md + skills/agents; default [] keeps the run isolated. */
   settingSources?: Array<"user" | "project" | "local">;
+  /**
+   * Keep Read / Grep / Glob inside this directory: a PreToolUse hook denies any other path
+   * (sandbox.ts). Denied reads are reported in `escapeAttempts`, never in `filesRead`.
+   */
+  confineTo?: string;
   /**
    * Early-stop hook. Called after every tool_use with the trace collected SO FAR; return true to
    * end the session immediately. Lets a dispatch/trace case stop the moment its evidence is in
@@ -100,6 +111,8 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     // Default: do NOT load on-disk config — isolates the injected artifact. workflowTask overrides.
     settingSources: opts.settingSources ?? [],
     env: subscriptionEnv(),
+    // An SDK callback, not a settings.json hook: it holds even with settingSources: [].
+    ...(opts.confineTo ? { hooks: { PreToolUse: [confineHook(opts.confineTo)] } } : {}),
   };
 
   const textParts: string[] = [];
@@ -107,6 +120,7 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
   const subagents: string[] = [];
   const skills: string[] = [];
   const reads: string[] = [];
+  const escapes: string[] = [];
   let resultText = "";
   let isError = false;
   let numTurns = 0;
@@ -145,7 +159,11 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
               const sub = input.subagent_type ?? input.agent_type ?? input.name;
               if (sub) subagents.push(sub);
             }
-            if (block.name === "Read") {
+            // The hook denies an outside call only when it executes, after this tool_use block —
+            // so judge it here with the same predicate and keep it out of the reads.
+            const escape = opts.confineTo ? outsidePath(opts.confineTo, block.name, input) : undefined;
+            if (escape) escapes.push(escape);
+            else if (block.name === "Read") {
               const fp = input.file_path ?? input.path;
               if (fp) reads.push(fp);
             }
@@ -194,6 +212,7 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     subagents: [...new Set(subagents)],
     skillsInvoked: [...new Set(skills)],
     filesRead: reads,
+    escapeAttempts: escapes,
     numTurns,
     isError,
     metrics: { durationMs, inputTokens, outputTokens, toolCallCount },

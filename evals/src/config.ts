@@ -45,6 +45,13 @@ export const WORKFLOW_ALLOWED_TOOLS = ["Read", "Grep", "Glob", "Task", "Agent", 
 // Second fence for the workflow tier: removed from the context even if a setting re-enables them.
 export const WORKFLOW_DENIED_TOOLS = ["Write", "Edit", "NotebookEdit", "Bash", "PowerShell"];
 
+// --- Contrast snapshots (src/runtime/sandbox.ts) ----------------------------
+// Left out of BOTH snapshots: the eval cases name the expected answer (expectFileRead).
+export const SNAPSHOT_EXCLUDE = ["evals/"];
+// Left out of the control snapshot only — the harness whose effect a contrast case measures.
+export const HARNESS_BASENAMES = ["CLAUDE.md", "AGENTS.md"]; // at any depth
+export const HARNESS_PREFIXES = [".claude/", ".mcp.json"];
+
 // --- Output verbosity -------------------------------------------------------
 // Set EVAL_QUIET to suppress per-run trace/verdict spam during multi-run aggregation.
 export const QUIET = Boolean(process.env.EVAL_QUIET);

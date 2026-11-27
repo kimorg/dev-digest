@@ -7,8 +7,9 @@ import type { WorkflowCase } from "../src/index.js";
  * cross-cutting. Every case names the AGENTS.md rule it guards — reword or drop that rule and the
  * case should go red.
  *
- * Budget: 7 Claude sessions total.
+ * Budget: 9 Claude sessions total.
  *   - 5 × trace     → 1 session each                      = 5
+ *   - 1 × contrast  → treatment + control                 = 2
  *   - 1 × activation pair (positive + near-miss negative) = 2
  *
  * Assert on the doc a map ROUTES to, never on reading the map itself: a nested CLAUDE.md
@@ -101,6 +102,30 @@ export const cases: WorkflowCase[] = [
     maxTurns: 10,
   },
 
+  // --- contrast (2 sessions): Session protocol "Start" changes what a code task reads -----------
+  // Root AGENTS.md › Session protocol: "Start: before working in a package, read its INSIGHTS.md".
+  // A narrow code task (rename a function) that never names the protocol, INSIGHTS or docs:
+  // without the harness the model just Greps the identifier. `countBlockers` appears in no .md
+  // file, so search alone never surfaces reviewer-core/INSIGHTS.md. If the protocol is reworded
+  // to skip small tasks, this goes red — that is the point.
+  // Picked 2026-11-26 by probing on the snapshots: treatment 5/5 read it, control 0/3.
+  // Rejected (control read the target too): docs/agent-prompts/ (Security reviewer
+  // prompt), client|e2e INSIGHTS.md on an open "prepare for the task" prompt, docs/deps/ report
+  // (and its treatment stopped at INSIGHTS.md), the client copy of findings.ts (control 1/2).
+  {
+    kind: "contrast",
+    name: "starting a reviewer-core rename reads reviewer-core/INSIGHTS.md only with the harness",
+    // Phrased as STARTING the task, not as a lookup: "find where it's used" read as Q&A and the
+    // treatment skipped the protocol 1/5 (probe) and 1/1 (runner); this phrasing went 5/5.
+    prompt:
+      "Беруся за задачу в reviewer-core: перейменувати функцію `countBlockers` на `countGateBlockers` " +
+      "в оголошенні та всіх місцях використання. Почни роботу над задачею, але поки зупинись на плані: " +
+      "які файли й рядки зміняться. Код не пиши й нічого не змінюй.",
+    expectFileRead: "reviewer-core/INSIGHTS.md",
+    tools: ["Read", "Grep", "Glob"],
+    maxTurns: 8,
+  },
+
   // --- activation pair (2 sessions): positive + near-miss negative ------------------------------
   // engineering-insights description: "... or immediately after discovering something non-obvious
   // (a surprising behavior, a dead end, a fix for a confusing error)". Write/Edit/Bash are fenced
@@ -112,13 +137,28 @@ export const cases: WorkflowCase[] = [
     // "Хочу це зафіксувати" reads as both "record" and "fix" in Ukrainian and let the model start
     // debugging; stating the fix is already applied removes that. Deliberately does NOT name
     // INSIGHTS.md, which invites handling the file directly instead of delegating to the skill.
+    // The discovery must be TRUE, COMPLETE and CONSISTENT WITH THE LIVE TREE — the model checks
+    // all three before recording, and asks instead of activating when one fails:
+    //   - "pgvector returned zero rows on a dimension mismatch" is false (pgvector raises an
+    //     error) → 1/4 activations on 2026-11-26;
+    //   - "fix applied: dimensions changed + new migration" is not in the tree (still 1536, no
+    //     new migration) → 0/5 on 2026-11-27, every run flagged the discrepancy.
+    // So it is a DEAD END that was reverted (the skill names dead ends explicitly): nothing in it
+    // contradicts server/ (vector(1536) in 0000_init.sql, dimensions: 1536 in the two schemas,
+    // text-embedding-3-small in the adapters, no vector index).
     prompt:
-      "Щойно закінчив налагоджувати баг у server/: pgvector-запит повертав нуль рядків, бо " +
-      "розмірність колонки не збіглася після зміни моделі ембедингів. Фікс уже застосований і " +
-      "працює. Хочу задокументувати цю знахідку, щоб команда не наступила на ті самі граблі.",
+      "Щойно в server/ спробував перейти на модель ембедингів text-embedding-3-large (3072 виміри) " +
+      "і вперся в глухий кут: запис ембедингів падав з `ERROR: expected 1536 dimensions, not 3072`. " +
+      "Спершу шукав проблему в адаптері ембедера, а насправді розмірність задає колонка " +
+      "`vector(1536)` з міграції `0000_init.sql` (і `dimensions: 1536` у Drizzle-схемах " +
+      "context.ts та knowledge.ts), тож зміна моделі тягне за собою нову міграцію й переембединг " +
+      "наявних рядків. Зміни в адаптері я відкотив, лишаємося на text-embedding-3-small. Хочу " +
+      "задокументувати цю знахідку, щоб команда не наступила на ті самі граблі.",
     skill: "engineering-insights",
     shouldActivate: true,
-    maxTurns: 6,
+    // The Session protocol spends 2–3 turns on INSIGHTS.md / AGENTS.md before the skill; the run
+    // stops as soon as the skill engages (runWorkflowCases), so the headroom costs nothing on a pass.
+    maxTurns: 10,
   },
   {
     kind: "activation",

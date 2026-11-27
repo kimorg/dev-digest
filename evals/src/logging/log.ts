@@ -21,6 +21,9 @@ export function logTrace(label: string, result: Result): void {
   console.log(`    subagents: ${result.subagents.join(", ") || "(none)"}`);
   console.log(`    skills:    ${result.skillsInvoked.join(", ") || "(none)"}`);
   console.log(`    reads:     ${result.filesRead.join(", ") || "(none)"}`);
+  if (result.escapeAttempts.length) {
+    console.log(`    ${YELLOW}escapes:   ${result.escapeAttempts.join(", ")} (denied)${RESET}`);
+  }
   const m = result.metrics;
   console.log(
     `    metrics:   ${result.numTurns} turns · ${m.durationMs}ms · ` +

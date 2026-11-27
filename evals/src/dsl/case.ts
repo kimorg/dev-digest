@@ -5,13 +5,12 @@
  * marked spot below, in this one file).
  */
 
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { test, expect } from "vitest";
 import { DEFAULT_THRESHOLD } from "../config.js";
 import { skillTask, agentTask, workflowTask } from "../tasks.js";
 import { runClaude, type Result, type RunOptions } from "../runtime/run-claude.js";
+import { makeSnapshot } from "../runtime/sandbox.js";
 import { patternMatch } from "../scoring/pattern-match.js";
 import { llmJudge, type Verdict } from "../scoring/llm-judge.js";
 import { logTrace, logVerdict } from "../logging/log.js";
@@ -76,7 +75,7 @@ export type WorkflowCase =
     };
 
 /** Did a skill engage? Either an explicit Skill tool-call, or reading its SKILL.md. */
-export function activated(result: Result, skill: string): boolean {
+export function activated(result: Pick<Result, "skillsInvoked" | "filesRead">, skill: string): boolean {
   const bySkill = result.skillsInvoked.some((s) => s === skill || s.endsWith(`:${skill}`));
   const byRead = result.filesRead.some((f) => f.includes(`skills/${skill}/SKILL.md`));
   return bySkill || byRead;
@@ -133,21 +132,34 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
           stopWhen: (p) => p.subagents.includes(expect1),
         });
         logTrace(c.name, result);
+        // `passed` flips only after every expect holds, so the record carries the real verdict
+        // (record() alone would fall back to !isError and log a failed case as a pass).
+        let passed = false;
         try {
           expect(result.subagents, `subagents: ${result.subagents.join(", ")}`).toContain(c.expectSubagent);
+          passed = true;
         } finally {
-          record(c.name, { result });
+          record(c.name, { result, outcome: passed });
         }
       } else if (c.kind === "activation") {
-        const result = await workflowTask(c.prompt, { maxTurns: c.maxTurns });
+        // A positive case stops the moment the skill engages — its own run (reading SKILL.md,
+        // scripts) is not what is measured. A negative case must run to its natural end: an
+        // early stop could hide an activation that comes later.
+        const skill = c.skill;
+        const result = await workflowTask(c.prompt, {
+          maxTurns: c.maxTurns,
+          stopWhen: c.shouldActivate ? (p) => activated(p, skill) : undefined,
+        });
         logTrace(c.name, result);
+        let passed = false;
         try {
           expect(
             activated(result, c.skill),
             `skills: ${result.skillsInvoked.join(", ")} | reads: ${result.filesRead.join(", ")}`,
           ).toBe(c.shouldActivate);
+          passed = true;
         } finally {
-          record(c.name, { result });
+          record(c.name, { result, outcome: passed });
         }
       } else if (c.kind === "trace") {
         // One session, many asserts — every provided expectation is checked against the same trace.
@@ -157,9 +169,6 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
         const skls = c.expectSkills ?? [];
         const files = c.expectFilesRead ?? [];
         const avoid = c.avoidFilesRead ?? [];
-        const skillEngaged = (p: { skillsInvoked: string[]; filesRead: string[] }, skill: string) =>
-          p.skillsInvoked.some((s) => s === skill || s.endsWith(`:${skill}`)) ||
-          p.filesRead.some((f) => f.includes(`skills/${skill}/SKILL.md`));
         const result = await workflowTask(c.prompt, {
           maxTurns: c.maxTurns,
           // With an avoid-list, stopping at the first success would hide a forbidden read that comes
@@ -168,10 +177,11 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
             avoid.length > 0
               ? avoid.some((f) => p.filesRead.some((r) => r.includes(f)))
               : subs.every((s) => p.subagents.includes(s)) &&
-                skls.every((s) => skillEngaged(p, s)) &&
+                skls.every((s) => activated(p, s)) &&
                 files.every((f) => p.filesRead.some((r) => r.includes(f))),
         });
         logTrace(c.name, result);
+        let passed = false;
         try {
           for (const sub of c.expectSubagents ?? []) {
             expect(result.subagents, `subagents: ${result.subagents.join(", ")}`).toContain(sub);
@@ -195,30 +205,50 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
             ).toBe(false);
           }
           expect(result.isError).toBe(false);
+          passed = true;
         } finally {
-          record(c.name, { result });
+          record(c.name, { result, outcome: passed });
         }
       } else {
-        // contrast: treatment (real harness) vs control (empty tmpdir, no on-disk config).
+        // contrast: the SAME repo snapshot with vs without the harness (CLAUDE.md / AGENTS.md /
+        // .claude / .mcp.json), evals/ left out of both so no run reads the expected answer off a
+        // case file. Each session is fenced to its snapshot (sandbox.ts) — an empty-tmpdir control
+        // used to Grep /tmp, find the repo path and Read the real repo.
         const tools = c.tools ?? ["Read", "Grep", "Glob"];
-        const treatment = await workflowTask(c.prompt, { allowedTools: tools, maxTurns: c.maxTurns });
-        const emptyCwd = mkdtempSync(join(tmpdir(), "eval-control-"));
-        const control = await runClaude(c.prompt, {
-          allowedTools: tools,
-          maxTurns: c.maxTurns,
-          cwd: emptyCwd,
-          settingSources: [],
-        });
-        logTrace(`${c.name} [treatment]`, treatment);
-        logTrace(`${c.name} [control]`, control);
+        const full = makeSnapshot({ stripHarness: false });
+        const bare = makeSnapshot({ stripHarness: true });
         try {
-          const treatmentRead = treatment.filesRead.some((f) => f.includes(c.expectFileRead));
-          const controlRead = control.filesRead.some((f) => f.includes(c.expectFileRead));
-          expect(treatmentRead, `treatment reads: ${treatment.filesRead.join(", ")}`).toBe(true);
-          expect(controlRead, `control reads: ${control.filesRead.join(", ")}`).toBe(false);
+          const treatment = await workflowTask(c.prompt, {
+            allowedTools: tools,
+            maxTurns: c.maxTurns,
+            cwd: full,
+            confineTo: full,
+          });
+          const control = await runClaude(c.prompt, {
+            allowedTools: tools,
+            maxTurns: c.maxTurns,
+            cwd: bare,
+            confineTo: bare,
+            settingSources: [],
+          });
+          logTrace(`${c.name} [treatment]`, treatment);
+          logTrace(`${c.name} [control]`, control);
+          // Both rows share one nodeid (the test name), so both carry the case's verdict — a
+          // per-arm outcome would make the pass rate of that nodeid mean nothing.
+          let passed = false;
+          try {
+            const treatmentRead = treatment.filesRead.some((f) => f.includes(c.expectFileRead));
+            const controlRead = control.filesRead.some((f) => f.includes(c.expectFileRead));
+            expect(treatmentRead, `treatment reads: ${treatment.filesRead.join(", ")}`).toBe(true);
+            expect(controlRead, `control reads: ${control.filesRead.join(", ")}`).toBe(false);
+            passed = true;
+          } finally {
+            record(`${c.name} [treatment]`, { result: treatment, outcome: passed });
+            record(`${c.name} [control]`, { result: control, outcome: passed });
+          }
         } finally {
-          record(`${c.name} [treatment]`, { result: treatment });
-          record(`${c.name} [control]`, { result: control });
+          rmSync(full, { recursive: true, force: true });
+          rmSync(bare, { recursive: true, force: true });
         }
       }
     });

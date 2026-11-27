@@ -1,0 +1,122 @@
+diff --git a/server/src/modules/brief/routes.ts b/server/src/modules/brief/routes.ts
+index 6c759d4..7a559d9 100644
+--- a/server/src/modules/brief/routes.ts
++++ b/server/src/modules/brief/routes.ts
+@@ -9,6 +9,7 @@ import { buildBriefService } from './wiring.js';
+  * Brief module (PR → Overview "PR brief" block).
+  *   GET  /pulls/:id/brief → stored brief + `stale`; never calls a model or GitHub
+  *   POST /pulls/:id/brief → regenerate with one model call and store it
++ *   GET  /repos/:id/briefs/stale → PRs whose brief is behind the PR head
+  */
+ export default async function briefRoutes(appBase: FastifyInstance) {
+   const app = appBase.withTypeProvider<ZodTypeProvider>();
+@@ -38,4 +39,11 @@ export default async function briefRoutes(appBase: FastifyInstance) {
+       return service.generate(workspaceId, req.params.id);
+     },
+   );
++
++  app.get('/repos/:id/briefs/stale', { schema: { params: IdParams } }, async (req) => {
++    const { workspaceId } = await getContext(app.container, req);
++    const query = req.query as { limit?: string };
++    const limit = Math.min(Number(query.limit ?? 20) || 20, 100);
++    return { items: await service.listStale(workspaceId, req.params.id, limit) };
++  });
+ }
+diff --git a/server/src/modules/brief/service.ts b/server/src/modules/brief/service.ts
+index 58b79db..ed2f87a 100644
+--- a/server/src/modules/brief/service.ts
++++ b/server/src/modules/brief/service.ts
+@@ -1,5 +1,10 @@
+ import type { PrBriefRecord, PrBriefView } from '@devdigest/shared';
++import { and, desc, eq } from 'drizzle-orm';
++import type { Db } from '../../db/client.js';
++import * as t from '../../db/schema.js';
++import type { PullRow } from '../../db/rows.js';
+ import { AppError, ExternalServiceError, NotFoundError } from '../../platform/errors.js';
++import { taskLine } from '../reviews/helpers.js';
+ import {
+   allowedBriefPaths,
+   extractIssueRef,
+@@ -9,6 +14,7 @@ import {
+   latestRunIdsPerAgent,
+   pickContextDocPaths,
+ } from './domain.js';
++import { toPrBriefRecord } from './helpers.js';
+ import { BRIEF_SYSTEM, buildBriefMessages } from './prompt.js';
+ import type {
+   BriefBlast,
+@@ -20,9 +26,10 @@ import type {
+   BriefPull,
+   BriefStore,
+ } from './ports.js';
+-import type { BriefInput } from './types.js';
++import type { BriefInput, StaleBriefItem } from './types.js';
+ 
+ export interface BriefServiceDeps {
++  db: Db;
+   store: BriefStore;
+   blast: BriefBlast;
+   intent: BriefIntent;
+@@ -50,6 +57,32 @@ export class BriefService {
+     return { brief: brief ?? null, stale: brief ? isBriefStale(brief, pull.headSha) : false };
+   }
+ 
++  /** PRs of a repo whose brief was generated for an older head, newest PR first. */
++  async listStale(workspaceId: string, repoId: string, limit: number): Promise<StaleBriefItem[]> {
++    const rows = await this.deps.db
++      .select({ pull: t.pullRequests, json: t.prBrief.json })
++      .from(t.prBrief)
++      .innerJoin(t.pullRequests, eq(t.pullRequests.id, t.prBrief.prId))
++      .where(and(eq(t.pullRequests.workspaceId, workspaceId), eq(t.pullRequests.repoId, repoId)))
++      .orderBy(desc(t.pullRequests.number));
++
++    const items: StaleBriefItem[] = [];
++    for (const row of rows) {
++      const brief = toPrBriefRecord(row.json);
++      if (!brief || !isBriefStale(brief, row.pull.headSha)) continue;
++      items.push({
++        prId: row.pull.id,
++        number: row.pull.number,
++        title: taskLine(row.pull as PullRow),
++        generatedAt: brief.generated_at,
++        briefHeadSha: brief.head_sha,
++        currentHeadSha: row.pull.headSha,
++      });
++      if (items.length >= limit) break;
++    }
++    return items;
++  }
++
+   generate(workspaceId: string, prId: string): Promise<PrBriefView> {
+     const key = `${workspaceId}:${prId}`;
+     const running = this.inflight.get(key);
+diff --git a/server/src/modules/brief/types.ts b/server/src/modules/brief/types.ts
+index 1df63e9..4a4d18f 100644
+--- a/server/src/modules/brief/types.ts
++++ b/server/src/modules/brief/types.ts
+@@ -30,3 +30,13 @@ export interface GroundedBrief {
+   droppedRisks: number;
+   droppedFocus: number;
+ }
++
++/** One PR whose stored brief no longer matches the PR head. */
++export interface StaleBriefItem {
++  prId: string;
++  number: number;
++  title: string;
++  generatedAt: string;
++  briefHeadSha: string;
++  currentHeadSha: string;
++}
+diff --git a/server/src/modules/brief/wiring.ts b/server/src/modules/brief/wiring.ts
+index 040ae44..3a5ed24 100644
+--- a/server/src/modules/brief/wiring.ts
++++ b/server/src/modules/brief/wiring.ts
+@@ -11,6 +11,7 @@ import type { BriefLog } from './ports.js';
+  */
+ export function buildBriefService(container: Container, log: BriefLog): BriefService {
+   return new BriefService({
++    db: container.db,
+     store: new BriefRepository(container.db),
+     blast: {
+       async get(workspaceId, prId) {

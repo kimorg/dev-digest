@@ -1,4 +1,8 @@
 #!/bin/sh
 # PR self-review gate — see .claude/skills/pr-self-review/README.md
+# Eval suggestion (informational, never blocks) — see .githooks/eval-suggest.mjs
 # Enable once per clone: git config core.hooksPath .githooks
-exec node "$(git rev-parse --show-toplevel)/.claude/skills/pr-self-review/scripts/check.mjs" push
+root="$(git rev-parse --show-toplevel)"
+refs="$(cat)"   # pushed refs arrive on stdin once; both scripts need them
+printf '%s\n' "$refs" | node "$root/.githooks/eval-suggest.mjs" push || true
+printf '%s\n' "$refs" | exec node "$root/.claude/skills/pr-self-review/scripts/check.mjs" push

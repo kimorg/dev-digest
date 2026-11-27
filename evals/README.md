@@ -269,6 +269,8 @@ src/
   runtime/
     env.ts              # subscriptionEnv() — strips ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN
     run-claude.ts       # runClaude() — the headless turn-loop; Result / RunOptions / Metrics types
+    sandbox.ts          # contrast fence: makeSnapshot() (with/without harness), confineHook(), outsidePath()
+    sandbox.test.ts     # non-model unit tests — the path fence and harness-file predicate
   artifacts/
     paths.ts            # REPO_ROOT / SKILLS_DIR / AGENTS_DIR / RESULTS_DIR anchors
     load.ts             # skillContent() (SKILL.md + references/*.md), agentContent()
@@ -277,13 +279,14 @@ src/
                         #   skill/agentTask skip injection under EVAL_CONFIG=baseline (benchmark lift)
   scoring/
     pattern-match.ts    # patternMatch() — deterministic substring coverage
-    llm-judge.ts        # llmJudge(), parseVerdict(), Verdict, the judge rubric
+    llm-judge.ts        # llmJudge(), parseVerdict(), alignResults(), Verdict, the judge rubric
+    llm-judge.test.ts   # non-model unit tests — judge results mapped back to case practices
   logging/
     log.ts              # logTrace() (tools/subagents/skills/reads/metrics), logVerdict() (per-practice)
   records/
     record.ts           # record() → results/records.jsonl + full output to results/outputs/<run>/<slug>.md
     stats.ts            # pure: calcStats(), loadRecords(), aggregate(), byConfig(), computeFlags()
-    stats.test.ts       # the only non-model unit tests — the statistics math
+    stats.test.ts       # non-model unit tests — the statistics math
     benchmark.ts        # eval:benchmark CLI (with vs without artifact)
   trend-reporter.ts     # vitest reporter: pass/fail rows → results/history.jsonl
   compare.ts            # eval:compare — run-flip view over history.jsonl
@@ -410,7 +413,7 @@ How each `kind` asserts:
 |--------|------|-------------|
 | `dispatch` | `workflowTask` | `result.subagents` contains `expectSubagent` |
 | `activation` | `workflowTask` | `activated(result, skill) === shouldActivate` (positive **and** near-miss negative) |
-| `contrast` | treatment (real repo) **and** control (empty tmpdir, `settingSources:[]`) | `expectFileRead` read in treatment, NOT in control |
+| `contrast` | treatment (repo snapshot **with** the harness, `settingSources:["project"]`) **and** control (same snapshot **without** `CLAUDE.md` / `AGENTS.md` / `.claude/` / `.mcp.json`, `settingSources:[]`); `evals/` is left out of both, and each session is fenced to its snapshot | `expectFileRead` read in treatment, NOT in control |
 | `trace` | one `workflowTask` | every given `expectSubagents` / `expectSkills` / `expectFilesRead` holds and **no** `avoidFilesRead` path was read; stops early once the evidence is in (with `avoidFilesRead`: only on a forbidden read) |
 
 Reads are `Read` tool calls only (Grep/Glob paths don't count). Assert on the doc a package map
@@ -419,6 +422,16 @@ Code, so an explicit `Read` of it appears only in some runs.
 
 Workflow records carry an empty `practices[]` (no judge) but a full trace; `contrast` writes two
 records — `<label>:treatment` and `<label>:control`.
+
+**Why `contrast` runs on snapshots** (`src/runtime/sandbox.ts`). `Read` / `Grep` / `Glob` take
+absolute paths, so a cwd alone isolates nothing: an empty-tmpdir control once Grep'ed `/tmp`,
+found Claude Code temp files naming the repo path and read the real repo. And "repo vs nothing"
+would not isolate the harness anyway. Both sessions therefore run on a copy of the working tree
+(`git ls-files -co --exclude-standard`, ~65 ms), and an SDK `PreToolUse` hook (`confineTo`)
+denies any Read / Grep / Glob outside it — an SDK callback, so it holds under
+`settingSources: []`, and `onFailure: "block"` makes it fail closed. A denied call is reported in
+`escapeAttempts` (trace line `escapes:`), never in `filesRead`. `evals/` is excluded from both
+copies because the case files spell out the expected answer.
 
 ## Commands & parameters
 
@@ -431,7 +444,7 @@ pnpm vitest run skills   # just skills/ (once you've scaffolded some)
 pnpm vitest run agents   # just agents/ (once you've scaffolded some)
 pnpm eval:workflow       # just workflow/
 pnpm vitest run skills/onion-architecture       # one artifact
-pnpm vitest run src/records/stats.test.ts       # the only non-model unit test (stats math)
+pnpm vitest run src                             # the non-model unit tests (stats math, judge mapping)
 ```
 
 ### `eval:repeat` — stability of one thing
@@ -581,6 +594,11 @@ Statistics semantics:
 - **Sample stddev** (n−1). n<5 is indicative only — the tools say so.
 - **Practice identity is the practice text.** Reword a practice and you start a new statistics
   series by design (a practice is a prompt; a reworded prompt is a different measurement).
+  The text always comes from the case file: the judge answers by practice number (`id`) and
+  `alignResults()` maps it back, because judges paraphrase when asked to echo the text. A practice
+  the judge skips is recorded as FAIL (`judge returned no result for this practice`), so the score's
+  denominator is always the number of practices. Records written before this fix may hold
+  paraphrased texts as separate series; deleting `results/` clears them.
 - **Empty ≠ zero.** A series with n=0 renders `—` and flags `missing_data`; a series of n>0 all
   failing renders `0%` and flags `always_failing`. The two are never conflated (this matters for
   grounding-gated tests at baseline, whose per-practice series is legitimately empty because the
@@ -602,7 +620,7 @@ tokens > 125% of baseline), `missing_data` (a config has zero records for a test
 | New skill/agent — is it **worth its tokens**? | `pnpm eval:benchmark skills/<skill> -n 5` |
 | Adding evals for one of **your** skills/agents | `pnpm eval:scaffold <name>` (or `--agent <name>`) |
 | Model / Claude Code version | `pnpm eval` (whole suite) |
-| Stats math changed | `pnpm vitest run src/records/stats.test.ts` |
+| Stats math or judge parsing changed | `pnpm vitest run src` |
 
 ## Safety
 
@@ -618,6 +636,8 @@ in `runClaude`, not left to approval:
 - `workflowTask` adds `disallowedTools: WORKFLOW_DENIED_TOOLS` (`Write, Edit, NotebookEdit, Bash,
   PowerShell`). Subagents it spawns inherit the fence (verified: a `general-purpose` subagent gets
   "No such tool available" on `Write`/`Bash`).
+- `contrast` sessions are also confined to their repo snapshot (`confineTo`, a `PreToolUse` hook
+  that denies Read / Grep / Glob outside it — verified to hold under `bypassPermissions`).
 - Every run also denies `mcp__*` unless its allow-list names an MCP tool: project `.mcp.json`
   servers and the account's claude.ai connectors (Drive, GitHub…) are not governed by `tools`
   and would otherwise run outward-facing actions unasked.

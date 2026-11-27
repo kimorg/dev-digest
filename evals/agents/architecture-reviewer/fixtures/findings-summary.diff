@@ -1,0 +1,254 @@
+diff --git a/client/messages/en/prReview.json b/client/messages/en/prReview.json
+index 00cc682..393d486 100644
+--- a/client/messages/en/prReview.json
++++ b/client/messages/en/prReview.json
+@@ -188,7 +188,12 @@
+     "emptyBody": "Run a review to generate findings. Use Run Review ▾ above (run all enabled agents or a specific one)."
+   },
+   "overview": {
+-    "description": "Description"
++    "description": "Description",
++    "summary": {
++      "counts": "{critical} critical · {warning} warnings · {suggestion} suggestions",
++      "ready": "Ready to merge",
++      "needsWork": "Needs work"
++    }
+   },
+   "diff": {
+     "title": "Files changed · {count} files",
+diff --git a/client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/FindingsSummaryBar/FindingsSummaryBar.tsx b/client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/FindingsSummaryBar/FindingsSummaryBar.tsx
+new file mode 100644
+index 0000000..9857ab0
+--- /dev/null
++++ b/client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/FindingsSummaryBar/FindingsSummaryBar.tsx
+@@ -0,0 +1,42 @@
++"use client";
++
++import React from "react";
++import { useTranslations } from "next-intl";
++import { Badge } from "@devdigest/ui";
++import { usePrFindingsSummary } from "@/lib/hooks/reviews";
++import { s } from "./styles";
++
++interface FindingsSummaryBarProps {
++  prId: string | null | undefined;
++}
++
++export function FindingsSummaryBar({ prId }: FindingsSummaryBarProps) {
++  const t = useTranslations("prReview");
++  const { data } = usePrFindingsSummary(prId);
++  if (!data) return null;
++
++  const open = data.critical + data.warning + data.suggestion;
++  const isReady =
++    data.critical === 0 &&
++    data.warning <= 2 &&
++    (data.posted_comments === null || data.posted_comments >= data.critical + data.warning) &&
++    open < 10;
++
++  return (
++    <div style={s.bar} data-testid="findings-summary">
++      <span>
++        {t("overview.summary.counts", {
++          critical: data.critical,
++          warning: data.warning,
++          suggestion: data.suggestion,
++        })}
++      </span>
++      <Badge
++        color={isReady ? "var(--ok)" : "var(--crit)"}
++        bg={isReady ? "var(--ok-bg)" : "var(--crit-bg)"}
++      >
++        {isReady ? t("overview.summary.ready") : t("overview.summary.needsWork")}
++      </Badge>
++    </div>
++  );
++}
+diff --git a/client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/FindingsSummaryBar/index.ts b/client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/FindingsSummaryBar/index.ts
+new file mode 100644
+index 0000000..0413214
+--- /dev/null
++++ b/client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/FindingsSummaryBar/index.ts
+@@ -0,0 +1 @@
++export { FindingsSummaryBar, FindingsSummaryBar as default } from "./FindingsSummaryBar";
+diff --git a/client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/FindingsSummaryBar/styles.ts b/client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/FindingsSummaryBar/styles.ts
+new file mode 100644
+index 0000000..77d6d30
+--- /dev/null
++++ b/client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/FindingsSummaryBar/styles.ts
+@@ -0,0 +1,10 @@
++import type { CSSProperties } from "react";
++
++export const s = {
++  bar: {
++    display: "flex",
++    alignItems: "center",
++    justifyContent: "space-between",
++    gap: 12,
++  } satisfies CSSProperties,
++};
+diff --git a/client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.tsx b/client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.tsx
+index 6002d2e..2af8769 100644
+--- a/client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.tsx
++++ b/client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/OverviewTab.tsx
+@@ -10,6 +10,7 @@ import { IntentCard } from "./_components/IntentCard";
+ import { RiskAreas } from "./_components/RiskAreas";
+ import { BlastRadiusCard } from "./_components/BlastRadiusCard";
+ import { ReviewFocusCard } from "./_components/ReviewFocusCard";
++import { FindingsSummaryBar } from "./_components/FindingsSummaryBar";
+ import { s } from "./styles";
+ 
+ interface OverviewTabProps {
+@@ -33,6 +34,7 @@ export function OverviewTab({ prId, repoId, prBody, repoFullName, headSha, files
+     <>
+       {/* Label + block share one wrapper: the parent is a flex column with `gap`, so a bare
+           label would be its own item and sit `gap` further from its block than the others. */}
++      <FindingsSummaryBar prId={prId} />
+       <div>
+         <SectionLabel icon="FileText">{tBrief("label")}</SectionLabel>
+         <BriefBanner prId={prId} />
+diff --git a/client/src/lib/hooks/query-keys.ts b/client/src/lib/hooks/query-keys.ts
+index 0cae08d..48d8a5b 100644
+--- a/client/src/lib/hooks/query-keys.ts
++++ b/client/src/lib/hooks/query-keys.ts
+@@ -41,6 +41,7 @@ export const queryKeys = {
+   prActiveRuns: (prId: string | null | undefined) => ["pr-active-runs", prId] as const,
+   prRuns: (prId: string | null | undefined) => ["pr-runs", prId] as const,
+   prReviews: (prId: string | null | undefined) => ["pr-reviews", prId] as const,
++  prFindingsSummary: (prId: string | null | undefined) => ["pr-findings-summary", prId] as const,
+   prComments: (prId: string | null | undefined) => ["pr-comments", prId] as const,
+   prSmartDiff: (prId: string | null | undefined) => ["pr-smart-diff", prId] as const,
+   prIntent: (prId: string | null | undefined) => ["pr-intent", prId] as const,
+diff --git a/client/src/lib/hooks/reviews.ts b/client/src/lib/hooks/reviews.ts
+index 1530af3..7508b0d 100644
+--- a/client/src/lib/hooks/reviews.ts
++++ b/client/src/lib/hooks/reviews.ts
+@@ -9,6 +9,7 @@ import { notify } from "../toast";
+ import { queryKeys } from "./query-keys";
+ import type {
+   FindingActionKind,
++  PrFindingsSummary,
+   PrReviewComment,
+   ReviewRecord,
+   ReviewRunResponse,
+@@ -38,6 +39,15 @@ export function usePrActiveRuns(prId: string | null | undefined) {
+   });
+ }
+ 
++// ---- Open findings per severity for a PR ----
++export function usePrFindingsSummary(prId: string | null | undefined) {
++  return useQuery({
++    queryKey: queryKeys.prFindingsSummary(prId),
++    queryFn: () => api.get<PrFindingsSummary>(`/pulls/${prId}/findings/summary`),
++    enabled: !!prId,
++  });
++}
++
+ // ---- Full run history for a PR (every agent_runs row, any status) ----
+ /** All runs for a PR — done, failed (with error), cancelled, running. Survives
+    reload (DB-backed). Polls while anything is running so it self-updates. */
+diff --git a/server/src/modules/reviews/routes.ts b/server/src/modules/reviews/routes.ts
+index 5c68be3..40883df 100644
+--- a/server/src/modules/reviews/routes.ts
++++ b/server/src/modules/reviews/routes.ts
+@@ -1,6 +1,6 @@
+ import type { FastifyInstance } from 'fastify';
+ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+-import { RunRequest } from '@devdigest/shared';
++import { PrFindingsSummary, RunRequest } from '@devdigest/shared';
+ import type { RunEvent } from '@devdigest/shared';
+ import { getContext } from '../_shared/context.js';
+ import { IdParams } from '../_shared/schemas.js';
+@@ -13,6 +13,7 @@ import { ReviewService } from './service.js';
+  *   GET    /runs/:id/events                            → SSE stream of RunEvent (replay-first)
+  *   GET    /runs/:id/trace                             → the single-document RunTrace
+  *   GET    /pulls/:id/reviews                          → persisted reviews + findings for a PR
++ *   GET    /pulls/:id/findings/summary                 → open findings per severity
+  *   POST   /findings/:id/(accept|dismiss)              → finding actions
+  */
+ const FINDING_ACTIONS = ['accept', 'dismiss'] as const;
+@@ -141,6 +142,15 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
+     return service.reviewsForPull(workspaceId, req.params.id);
+   });
+ 
++  app.get(
++    '/pulls/:id/findings/summary',
++    { schema: { params: IdParams, response: { 200: PrFindingsSummary } } },
++    async (req) => {
++      const { workspaceId } = await getContext(container, req);
++      return service.findingsSummary(workspaceId, req.params.id);
++    },
++  );
++
+   // ---- Delete a whole review run (one agent's pass) + its findings --------
+   app.delete('/reviews/:id', { schema: { params: IdParams } }, async (req) => {
+     const { workspaceId } = await getContext(container, req);
+diff --git a/server/src/modules/reviews/service.ts b/server/src/modules/reviews/service.ts
+index 9228516..8f97a5b 100644
+--- a/server/src/modules/reviews/service.ts
++++ b/server/src/modules/reviews/service.ts
+@@ -1,5 +1,5 @@
+ import type { Container } from '../../platform/container.js';
+-import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
++import type { FindingActionKind, PrFindingsSummary, RunEventKind, RunTrace } from '@devdigest/shared';
+ import { AppError, NotFoundError } from '../../platform/errors.js';
+ import type { AgentRow } from '../../db/rows.js';
+ import { ReviewRepository } from './repository.js';
+@@ -189,6 +189,38 @@ export class ReviewService {
+     );
+   }
+ 
++  async findingsSummary(workspaceId: string, prId: string): Promise<PrFindingsSummary> {
++    const pull = await this.repo.getPull(workspaceId, prId);
++    if (!pull) throw new NotFoundError('Pull request not found');
++    const repo = await this.repo.getRepo(pull.repoId);
++    if (!repo) throw new NotFoundError('Repo not found');
++
++    const summary: PrFindingsSummary = {
++      critical: 0,
++      warning: 0,
++      suggestion: 0,
++      dismissed: 0,
++      posted_comments: null,
++    };
++    for (const { findings } of await this.repo.reviewsForPull(prId)) {
++      for (const f of findings) {
++        if (f.dismissedAt) summary.dismissed += 1;
++        else if (f.severity === 'CRITICAL') summary.critical += 1;
++        else if (f.severity === 'WARNING') summary.warning += 1;
++        else summary.suggestion += 1;
++      }
++    }
++
++    try {
++      const github = await this.container.github();
++      const comments = await github.listReviewComments({ owner: repo.owner, name: repo.name }, pull.number);
++      summary.posted_comments = comments.length;
++    } catch {
++      summary.posted_comments = null;
++    }
++    return summary;
++  }
++
+   async getRunTrace(runId: string): Promise<RunTrace | undefined> {
+     return this.repo.getRunTrace(runId);
+   }
+diff --git a/server/src/vendor/shared/contracts/findings.ts b/server/src/vendor/shared/contracts/findings.ts
+index a4cacfb..4dfa737 100644
+--- a/server/src/vendor/shared/contracts/findings.ts
++++ b/server/src/vendor/shared/contracts/findings.ts
+@@ -89,3 +89,14 @@ export const FindingAction = z.object({
+   reply: z.string().optional(),
+ });
+ export type FindingAction = z.infer<typeof FindingAction>;
++
++/** GET /pulls/:id/findings/summary — open findings per severity across the PR's reviews. */
++export const PrFindingsSummary = z.object({
++  critical: z.number().int(),
++  warning: z.number().int(),
++  suggestion: z.number().int(),
++  dismissed: z.number().int(),
++  /** Inline comments already on the GitHub PR; null when GitHub can't be reached. */
++  posted_comments: z.number().int().nullable(),
++});
++export type PrFindingsSummary = z.infer<typeof PrFindingsSummary>;
